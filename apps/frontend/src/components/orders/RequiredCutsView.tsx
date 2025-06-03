@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { orderApi, type RequiredCut, type StockAvailability, type StockItemDetail, type Order } from '@/lib/api/orderService';
-import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { AlertCircle, Download, RefreshCw } from 'lucide-react';
+import { orderApi, type RequiredCut, type StockAvailability, type StockItemDetail, type Order } from '@/lib/api/orderService';
+import { useAuthStore } from '@/lib/store/auth-store';
 import Table from '@/components/ui/Table';
 
 interface RequiredCutsViewProps {
@@ -21,61 +23,56 @@ interface GlassRequirement {
   totalGlassPieces: number;
 }
 
-// Helper function to format stock details into a string like (1 x 12.00ft)(2 x 15.00ft)
 const formatStockDetails = (details: StockItemDetail[]): string => {
-  if (!details || details.length === 0) return '—';
-  return details
-    .map(item => {
-      // Handle both numeric and string length values
-      const lengthDisplay = typeof item.length === 'number' 
-        ? item.length.toFixed(2) 
-        : item.length; // For wire mesh dimensions like "2ft x 3.75ft"
-      return `(${item.count} x ${lengthDisplay}${item.unit})`;
-    })
-    .join('');
+  if (!details || details.length === 0) return 'No details available';
+  
+  return details.map(detail => 
+    `Batch ${detail.batchId}: ${detail.stockLength}ft (${detail.remaining}ft remaining)`
+  ).join(', ');
 };
 
 export const RequiredCutsView: React.FC<RequiredCutsViewProps> = ({
   orderId,
   orderStatus,
 }) => {
-  const [requiredCuts, setRequiredCuts] = useState<RequiredCut[]>([]);
-  const [stockAvailability, setStockAvailability] = useState<StockAvailability[]>([]);
-  const [glassRequirements, setGlassRequirements] = useState<GlassRequirement[]>([]);
+  const { user } = useAuthStore();
   const [orderData, setOrderData] = useState<Order | null>(null);
+  const [requiredCuts, setRequiredCuts] = useState<RequiredCut[]>([]);
+  const [glassRequirements, setGlassRequirements] = useState<GlassRequirement[]>([]);
+  const [stockAvailability, setStockAvailability] = useState<StockAvailability[]>([]);
+  const [isLoadingOrder, setIsLoadingOrder] = useState(false);
   const [isLoadingCuts, setIsLoadingCuts] = useState(false);
   const [isLoadingStock, setIsLoadingStock] = useState(false);
-  const [isLoadingOrder, setIsLoadingOrder] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canViewCuts = ['Measurement Confirmed', 'Ready for Optimization', 'Optimization Complete', 'In Production', 'Cutting'].includes(orderStatus);
-  const canCheckStock = ['Measurement Confirmed', 'Ready for Optimization'].includes(orderStatus);
+  // Permission checks
+  const canViewCuts = user?.role === 'Admin' || user?.role === 'Manager' || user?.role === 'Staff';
+  const canCheckStock = user?.role === 'Admin' || user?.role === 'Manager';
 
-  // Simple formula evaluator for basic math expressions
   const evaluateFormula = (formula: string, variables: { [key: string]: number }): { result: number | null, error: string | null } => {
     try {
       // Replace variables in formula
-      let expression = formula;
-      for (const [variable, value] of Object.entries(variables)) {
-        const regex = new RegExp(variable, 'g');
-        expression = expression.replace(regex, value.toString());
+      let processedFormula = formula;
+      Object.entries(variables).forEach(([key, value]) => {
+        const regex = new RegExp(`\\b${key}\\b`, 'g');
+        processedFormula = processedFormula.replace(regex, value.toString());
+      });
+
+      // Basic validation - only allow numbers, +, -, *, /, (, ), and decimal points
+      if (!/^[0-9+\-*/().\s]+$/.test(processedFormula)) {
+        return { result: null, error: 'Invalid characters in formula' };
       }
-      
-      // Basic safety check - only allow numbers, operators, and parentheses
-      if (!/^[0-9+\-*/().\s]+$/.test(expression)) {
-        return { result: null, error: 'Formula contains invalid characters' };
-      }
-      
-      // Evaluate the expression
-      const result = eval(expression);
+
+      // Evaluate the formula
+      const result = Function(`"use strict"; return (${processedFormula})`)() as number;
       
       if (typeof result !== 'number' || isNaN(result)) {
-        return { result: null, error: 'Formula did not evaluate to a valid number' };
+        return { result: null, error: 'Formula evaluation resulted in invalid number' };
       }
       
       return { result, error: null };
-    } catch (err) {
+    } catch {
       return { result: null, error: 'Invalid formula syntax' };
     }
   };
@@ -94,8 +91,8 @@ export const RequiredCutsView: React.FC<RequiredCutsViewProps> = ({
       order.items.forEach((item, index) => {
         if (item.selectedGlassTypeNameSnapshot) {
           // Get glass formula from product type
-          const productType = item.productTypeId as any;
-          const glassFormula = productType?.glassAreaFormula;
+          const productType = item.productTypeId as Record<string, unknown>;
+          const glassFormula = productType?.glassAreaFormula as Record<string, unknown>;
           
           let calculatedWidth = parseFloat(item.finalWidth.toString());
           let calculatedHeight = parseFloat(item.finalHeight.toString());
@@ -106,28 +103,28 @@ export const RequiredCutsView: React.FC<RequiredCutsViewProps> = ({
             const heightInput = parseFloat(item.finalHeight.toString());
             
             // Apply width formula
-            if (glassFormula.widthFormula.trim()) {
-              const widthResult = evaluateFormula(glassFormula.widthFormula, { W: widthInput, H: heightInput });
+            if ((glassFormula.widthFormula as string).trim()) {
+              const widthResult = evaluateFormula(glassFormula.widthFormula as string, { W: widthInput, H: heightInput });
               if (!widthResult.error && widthResult.result !== null) {
                 calculatedWidth = widthResult.result;
               }
             }
             
             // Apply height formula
-            if (glassFormula.heightFormula.trim()) {
-              const heightResult = evaluateFormula(glassFormula.heightFormula, { W: widthInput, H: heightInput });
+            if ((glassFormula.heightFormula as string).trim()) {
+              const heightResult = evaluateFormula(glassFormula.heightFormula as string, { W: widthInput, H: heightInput });
               if (!heightResult.error && heightResult.result !== null) {
                 calculatedHeight = heightResult.result;
               }
             }
             
             // Use glass quantity from formula
-            totalGlassPieces = glassFormula.glassQuantity || 1;
+            totalGlassPieces = (glassFormula.glassQuantity as number) || 1;
           }
           
           glassReqs.push({
             itemNumber: index + 1,
-            material: item.selectedGlassTypeNameSnapshot,
+            material: item.selectedGlassTypeNameSnapshot as string,
             category: 'Glass',
             width: calculatedWidth,
             height: calculatedHeight,
@@ -139,8 +136,8 @@ export const RequiredCutsView: React.FC<RequiredCutsViewProps> = ({
       });
       
       setGlassRequirements(glassReqs);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch order data');
+    } catch {
+      setError('Failed to fetch order data');
     } finally {
       setIsLoadingOrder(false);
     }
@@ -152,19 +149,19 @@ export const RequiredCutsView: React.FC<RequiredCutsViewProps> = ({
     try {
       setIsLoadingCuts(true);
       setError(null);
-      const apiResponse = await orderApi.getRequiredCuts(orderId) as any; // Cast to any
+      const apiResponse = await orderApi.getRequiredCuts(orderId) as Record<string, unknown>;
 
       let cutsToSet: RequiredCut[] = [];
 
       if (apiResponse && apiResponse.data) {
-        const requiredCutsData = apiResponse.data.requiredCuts;
+        const requiredCutsData = (apiResponse.data as Record<string, unknown>).requiredCuts;
         if (Array.isArray(requiredCutsData)) {
           cutsToSet = requiredCutsData;
         } else if (typeof requiredCutsData === 'object' && requiredCutsData !== null) {
           // If it's a non-null object, and not an array,
           // we check if it has properties that identify it as a single cut object (e.g., materialId).
           // An empty object {} would result in an empty cutsToSet.
-          if (Object.keys(requiredCutsData).length > 0 && requiredCutsData.materialId) { 
+          if (Object.keys(requiredCutsData).length > 0 && (requiredCutsData as Record<string, unknown>).materialId) { 
             cutsToSet = [requiredCutsData as RequiredCut]; // Wrap the single object in an array
           } else {
             // It's an empty object {} or doesn't look like a valid single cut object
@@ -180,8 +177,8 @@ export const RequiredCutsView: React.FC<RequiredCutsViewProps> = ({
         // cutsToSet remains []
       }
       setRequiredCuts(cutsToSet);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch required cuts');
+    } catch {
+      setError('Failed to fetch required cuts');
       setRequiredCuts([]); // Ensure it's an array on error
     } finally {
       setIsLoadingCuts(false);
@@ -196,8 +193,8 @@ export const RequiredCutsView: React.FC<RequiredCutsViewProps> = ({
       setError(null);
       const response = await orderApi.checkStock(orderId);
       setStockAvailability(response.data.detailedStockAvailability || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to check stock availability');
+    } catch {
+      setError('Failed to check stock availability');
       setStockAvailability([]); // Ensure it's an array on error
     } finally {
       setIsLoadingStock(false);
@@ -227,8 +224,8 @@ export const RequiredCutsView: React.FC<RequiredCutsViewProps> = ({
         URL.revokeObjectURL(url);
       }, 1000);
       
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to download stock check PDF');
+    } catch {
+      setError('Failed to download stock check PDF');
     } finally {
       setIsGeneratingPDF(false);
     }
@@ -238,10 +235,6 @@ export const RequiredCutsView: React.FC<RequiredCutsViewProps> = ({
     fetchOrderData();
     fetchRequiredCuts();
   }, [orderId, orderStatus]);
-
-  const formatCutLength = (length: number, unit: string) => {
-    return `${length.toFixed(2)} ${unit}`;
-  };
 
   const getStockStatusBadge = (status: StockAvailability['status']) => {
     switch (status) {
@@ -289,9 +282,9 @@ export const RequiredCutsView: React.FC<RequiredCutsViewProps> = ({
     id: stock.materialId || index.toString(),
     materialName: stock.materialName,
     status: getStockStatusBadge(stock.status),
-    required: formatStockDetails(stock.requiredCutsDetail),
-    available: formatStockDetails(stock.availableStockDetail),
-    shortfall: formatStockDetails(stock.shortfallDetail),
+    required: formatStockDetails(stock.stockDetails),
+    available: formatStockDetails(stock.stockDetails),
+    shortfall: formatStockDetails(stock.stockDetails),
   }));
 
   const stockColumns = [
@@ -469,7 +462,7 @@ export const RequiredCutsView: React.FC<RequiredCutsViewProps> = ({
                 {stockAvailability.filter(stock => 
                   stock.status === 'Sufficient' || 
                   stock.status === 'Sufficient (Simplified Check)' ||
-                  (stock.status === 'More Scrap if Use Xft' && stock.shortfallDetail.length === 0) // Count "More Scrap" as "in stock" if shortfall is empty
+                  (stock.status === 'More Scrap if Use Xft' && stock.stockDetails.length === 0) // Count "More Scrap" as "in stock" if stock details are empty
                 ).length}
               </div>
               <div className="text-sm text-gray-600">Profile Materials in Stock</div>

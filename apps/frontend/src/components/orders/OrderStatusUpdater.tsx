@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Button } from '@/components/ui/Button';
 import { useAuthStore } from '@/lib/store/auth-store';
 
 interface OrderStatusUpdaterProps {
   orderId: string;
   currentStatus: string;
   onStatusUpdate: (newStatus: string, notes?: string) => void;
+  onRefresh?: () => void;
 }
 
 export const OrderStatusUpdater: React.FC<OrderStatusUpdaterProps> = ({
@@ -51,7 +51,8 @@ export const OrderStatusUpdater: React.FC<OrderStatusUpdaterProps> = ({
       setNotes('');
       setShowNotes(false);
       setPendingStatusUpdate(null);
-    } catch (error) {
+    } catch {
+      // Handle error silently or add proper error handling
     } finally {
       setIsUpdating(false);
     }
@@ -106,16 +107,17 @@ export const OrderStatusUpdater: React.FC<OrderStatusUpdaterProps> = ({
               placeholder="Add notes for this status change..."
             />
             <div className="flex space-x-2">
-              <Button
-                size="sm"
+              <button
+                type="button"
+                className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
                 onClick={handleNotesSubmit}
                 disabled={isUpdating}
               >
                 {isUpdating ? 'Updating...' : 'Update'}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
+              </button>
+              <button
+                type="button"
+                className="px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
                 onClick={() => {
                   setShowNotes(false);
                   setNotes('');
@@ -126,7 +128,7 @@ export const OrderStatusUpdater: React.FC<OrderStatusUpdaterProps> = ({
                 }}
               >
                 Cancel
-              </Button>
+              </button>
             </div>
           </div>
         </div>
