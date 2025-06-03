@@ -1,0 +1,64 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: ./apps/backend/Dockerfile
+      target: development
+    container_name: aluminium-backend
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./apps/backend:/usr/src/app/apps/backend
+      # Don't mount node_modules from host
+      - /usr/src/app/apps/backend/node_modules
+      # Root node_modules should be preserved too
+      - /usr/src/app/node_modules
+    environment:
+      - NODE_ENV=development
+      - MONGO_URI=mongodb://mongo:27017/aluminiumDB
+      - PORT=3001
+    depends_on:
+      - mongo
+    networks:
+      - aluminium-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: ./apps/frontend/Dockerfile
+      target: development
+    container_name: aluminium-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/frontend:/usr/src/app/apps/frontend
+      # Don't mount node_modules from host
+      - /usr/src/app/apps/frontend/node_modules
+      - /usr/src/app/node_modules
+      - /usr/src/app/apps/frontend/.next
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:3001
+    depends_on:
+      - backend
+    networks:
+      - aluminium-network
+    # command: npm run dev -w frontend # Let Dockerfile's CMD handle this
+
+  mongo:
+    image: mongo:latest
+    container_name: aluminium-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - aluminium-network
+
+networks:
+  aluminium-network:
+    driver: bridge
+
+volumes:
+  mongo-data:
+    driver: local

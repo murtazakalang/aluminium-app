@@ -1,15 +1,16 @@
 {
-  "name": "aluminium-app",
+  "name": "aluminium-app-monorepo",
   "private": true,
   "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo run dev",
-    "lint": "turbo run lint",
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types"
   },
   "devDependencies": {
-    "prettier": "^3.5.3",
+    "axios": "^1.9.0",
+    "prettier": "^3.2.5",
     "turbo": "^2.5.2",
     "typescript": "5.8.2"
   },
@@ -20,5 +21,13 @@
   "workspaces": [
     "apps/*",
     "packages/*"
-  ]
+  ],
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "express-validator": "^7.2.1",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^7.0.2",
+    "puppeteer": "^21.11.0",
+    "react-icons": "^5.5.0"
+  }
 }

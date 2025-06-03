@@ -1,0 +1,313 @@
+/**
+ * SVG Generator for Window/Door Visualizations
+ * Generates SVG representations of aluminium windows and doors based on product types and dimensions
+ */
+
+/**
+ * Convert dimensions to standardized units (pixels for SVG)
+ * @param {number} value - The dimension value
+ * @param {string} unit - The unit ('inches', 'mm', 'ft', 'm')
+ * @param {number} scale - Scale factor for SVG display (default: 10 pixels per inch)
+ * @returns {number} - Value in pixels
+ */
+function convertToPixels(value, unit, scale = 10) {
+    switch (unit) {
+        case 'inches':
+            return value * scale;
+        case 'mm':
+            return (value / 25.4) * scale; // Convert mm to inches, then to pixels
+        case 'ft':
+            return value * 12 * scale; // Convert ft to inches, then to pixels
+        case 'm':
+            return (value * 39.3701) * scale; // Convert m to inches, then to pixels
+        default:
+            return value * scale;
+    }
+}
+
+/**
+ * Generate SVG for a sliding window (2-track, 3-track, etc.)
+ * @param {number} width - Width in specified unit
+ * @param {number} height - Height in specified unit
+ * @param {string} unit - Dimension unit
+ * @param {number} tracks - Number of tracks (default: 2)
+ * @returns {string} - SVG string
+ */
+function generateSlidingWindowSVG(width, height, unit, tracks = 2) {
+    const pixelWidth = convertToPixels(width, unit);
+    const pixelHeight = convertToPixels(height, unit);
+    const frameThickness = 8;
+    const glassInset = 4;
+    
+    let svg = `<svg width="${pixelWidth + 20}" height="${pixelHeight + 40}" viewBox="0 0 ${pixelWidth + 20} ${pixelHeight + 40}" xmlns="http://www.w3.org/2000/svg">`;
+    
+    // Background
+    svg += `<rect width="${pixelWidth + 20}" height="${pixelHeight + 40}" fill="#f8f9fa"/>`;
+    
+    // Main frame
+    svg += `<rect x="10" y="20" width="${pixelWidth}" height="${pixelHeight}" fill="#8b9dc3" stroke="#4a5568" stroke-width="2"/>`;
+    
+    // Inner frame cavity
+    svg += `<rect x="${10 + frameThickness}" y="${20 + frameThickness}" width="${pixelWidth - 2*frameThickness}" height="${pixelHeight - 2*frameThickness}" fill="#e2e8f0"/>`;
+    
+    // Generate sliding panels based on tracks
+    const panelWidth = (pixelWidth - 2*frameThickness) / tracks;
+    
+    for (let i = 0; i < tracks; i++) {
+        const panelX = 10 + frameThickness + (i * panelWidth);
+        const panelY = 20 + frameThickness;
+        
+        // Panel frame
+        svg += `<rect x="${panelX + 2}" y="${panelY + 2}" width="${panelWidth - 4}" height="${pixelHeight - 2*frameThickness - 4}" fill="#a0aec0" stroke="#4a5568" stroke-width="1"/>`;
+        
+        // Glass area
+        svg += `<rect x="${panelX + 2 + glassInset}" y="${panelY + 2 + glassInset}" width="${panelWidth - 4 - 2*glassInset}" height="${pixelHeight - 2*frameThickness - 4 - 2*glassInset}" fill="#e6fffa" stroke="#81c9c6" stroke-width="1" opacity="0.7"/>`;
+        
+        // Handle
+        const handleX = panelX + panelWidth - 20;
+        const handleY = panelY + (pixelHeight - 2*frameThickness) / 2;
+        svg += `<circle cx="${handleX}" cy="${handleY}" r="4" fill="#2d3748"/>`;
+    }
+    
+    // Dimensions text
+    svg += `<text x="${pixelWidth/2 + 10}" y="15" text-anchor="middle" font-family="Arial" font-size="12" fill="#2d3748">${width} ${unit}</text>`;
+    svg += `<text x="5" y="${pixelHeight/2 + 20}" text-anchor="middle" font-family="Arial" font-size="12" fill="#2d3748" transform="rotate(-90, 5, ${pixelHeight/2 + 20})">${height} ${unit}</text>`;
+    
+    // Product type label
+    svg += `<text x="${pixelWidth/2 + 10}" y="${pixelHeight + 35}" text-anchor="middle" font-family="Arial" font-size="10" fill="#4a5568">${tracks}-Track Sliding Window</text>`;
+    
+    svg += '</svg>';
+    return svg;
+}
+
+/**
+ * Generate SVG for a casement window
+ * @param {number} width - Width in specified unit
+ * @param {number} height - Height in specified unit
+ * @param {string} unit - Dimension unit
+ * @param {string} openingType - 'single' or 'double'
+ * @returns {string} - SVG string
+ */
+function generateCasementWindowSVG(width, height, unit, openingType = 'single') {
+    const pixelWidth = convertToPixels(width, unit);
+    const pixelHeight = convertToPixels(height, unit);
+    const frameThickness = 8;
+    const glassInset = 4;
+    
+    let svg = `<svg width="${pixelWidth + 20}" height="${pixelHeight + 40}" viewBox="0 0 ${pixelWidth + 20} ${pixelHeight + 40}" xmlns="http://www.w3.org/2000/svg">`;
+    
+    // Background
+    svg += `<rect width="${pixelWidth + 20}" height="${pixelHeight + 40}" fill="#f8f9fa"/>`;
+    
+    // Main frame
+    svg += `<rect x="10" y="20" width="${pixelWidth}" height="${pixelHeight}" fill="#8b9dc3" stroke="#4a5568" stroke-width="2"/>`;
+    
+    if (openingType === 'double') {
+        // Double casement - two panels
+        const panelWidth = (pixelWidth - 3*frameThickness) / 2;
+        
+        // Left panel
+        svg += `<rect x="${10 + frameThickness}" y="${20 + frameThickness}" width="${panelWidth}" height="${pixelHeight - 2*frameThickness}" fill="#a0aec0" stroke="#4a5568" stroke-width="1"/>`;
+        svg += `<rect x="${10 + frameThickness + glassInset}" y="${20 + frameThickness + glassInset}" width="${panelWidth - 2*glassInset}" height="${pixelHeight - 2*frameThickness - 2*glassInset}" fill="#e6fffa" stroke="#81c9c6" stroke-width="1" opacity="0.7"/>`;
+        
+        // Center mullion
+        svg += `<rect x="${10 + frameThickness + panelWidth}" y="${20 + frameThickness}" width="${frameThickness}" height="${pixelHeight - 2*frameThickness}" fill="#8b9dc3"/>`;
+        
+        // Right panel
+        svg += `<rect x="${10 + 2*frameThickness + panelWidth}" y="${20 + frameThickness}" width="${panelWidth}" height="${pixelHeight - 2*frameThickness}" fill="#a0aec0" stroke="#4a5568" stroke-width="1"/>`;
+        svg += `<rect x="${10 + 2*frameThickness + panelWidth + glassInset}" y="${20 + frameThickness + glassInset}" width="${panelWidth - 2*glassInset}" height="${pixelHeight - 2*frameThickness - 2*glassInset}" fill="#e6fffa" stroke="#81c9c6" stroke-width="1" opacity="0.7"/>`;
+        
+        // Handles
+        svg += `<circle cx="${10 + frameThickness + 15}" cy="${20 + frameThickness + 30}" r="3" fill="#2d3748"/>`;
+        svg += `<circle cx="${10 + 2*frameThickness + panelWidth + panelWidth - 15}" cy="${20 + frameThickness + 30}" r="3" fill="#2d3748"/>`;
+        
+        // Hinges
+        svg += `<rect x="${10 + frameThickness - 2}" y="${20 + frameThickness + 20}" width="4" height="8" fill="#2d3748"/>`;
+        svg += `<rect x="${10 + frameThickness - 2}" y="${20 + pixelHeight - frameThickness - 28}" width="4" height="8" fill="#2d3748"/>`;
+        svg += `<rect x="${10 + 2*frameThickness + 2*panelWidth + 2}" y="${20 + frameThickness + 20}" width="4" height="8" fill="#2d3748"/>`;
+        svg += `<rect x="${10 + 2*frameThickness + 2*panelWidth + 2}" y="${20 + pixelHeight - frameThickness - 28}" width="4" height="8" fill="#2d3748"/>`;
+    } else {
+        // Single casement
+        svg += `<rect x="${10 + frameThickness}" y="${20 + frameThickness}" width="${pixelWidth - 2*frameThickness}" height="${pixelHeight - 2*frameThickness}" fill="#a0aec0" stroke="#4a5568" stroke-width="1"/>`;
+        svg += `<rect x="${10 + frameThickness + glassInset}" y="${20 + frameThickness + glassInset}" width="${pixelWidth - 2*frameThickness - 2*glassInset}" height="${pixelHeight - 2*frameThickness - 2*glassInset}" fill="#e6fffa" stroke="#81c9c6" stroke-width="1" opacity="0.7"/>`;
+        
+        // Handle
+        svg += `<circle cx="${10 + frameThickness + 15}" cy="${20 + frameThickness + 30}" r="3" fill="#2d3748"/>`;
+        
+        // Hinges
+        svg += `<rect x="${10 + frameThickness - 2}" y="${20 + frameThickness + 20}" width="4" height="8" fill="#2d3748"/>`;
+        svg += `<rect x="${10 + frameThickness - 2}" y="${20 + pixelHeight - frameThickness - 28}" width="4" height="8" fill="#2d3748"/>`;
+    }
+    
+    // Dimensions text
+    svg += `<text x="${pixelWidth/2 + 10}" y="15" text-anchor="middle" font-family="Arial" font-size="12" fill="#2d3748">${width} ${unit}</text>`;
+    svg += `<text x="5" y="${pixelHeight/2 + 20}" text-anchor="middle" font-family="Arial" font-size="12" fill="#2d3748" transform="rotate(-90, 5, ${pixelHeight/2 + 20})">${height} ${unit}</text>`;
+    
+    // Product type label
+    svg += `<text x="${pixelWidth/2 + 10}" y="${pixelHeight + 35}" text-anchor="middle" font-family="Arial" font-size="10" fill="#4a5568">${openingType === 'double' ? 'Double' : 'Single'} Casement Window</text>`;
+    
+    svg += '</svg>';
+    return svg;
+}
+
+/**
+ * Generate SVG for a fixed window
+ * @param {number} width - Width in specified unit
+ * @param {number} height - Height in specified unit
+ * @param {string} unit - Dimension unit
+ * @returns {string} - SVG string
+ */
+function generateFixedWindowSVG(width, height, unit) {
+    const pixelWidth = convertToPixels(width, unit);
+    const pixelHeight = convertToPixels(height, unit);
+    const frameThickness = 8;
+    const glassInset = 4;
+    
+    let svg = `<svg width="${pixelWidth + 20}" height="${pixelHeight + 40}" viewBox="0 0 ${pixelWidth + 20} ${pixelHeight + 40}" xmlns="http://www.w3.org/2000/svg">`;
+    
+    // Background
+    svg += `<rect width="${pixelWidth + 20}" height="${pixelHeight + 40}" fill="#f8f9fa"/>`;
+    
+    // Main frame
+    svg += `<rect x="10" y="20" width="${pixelWidth}" height="${pixelHeight}" fill="#8b9dc3" stroke="#4a5568" stroke-width="2"/>`;
+    
+    // Glass area
+    svg += `<rect x="${10 + frameThickness}" y="${20 + frameThickness}" width="${pixelWidth - 2*frameThickness}" height="${pixelHeight - 2*frameThickness}" fill="#e6fffa" stroke="#81c9c6" stroke-width="1" opacity="0.7"/>`;
+    
+    // Glazing beads (decorative)
+    svg += `<rect x="${10 + frameThickness + glassInset}" y="${20 + frameThickness + glassInset}" width="${pixelWidth - 2*frameThickness - 2*glassInset}" height="${pixelHeight - 2*frameThickness - 2*glassInset}" fill="none" stroke="#a0aec0" stroke-width="1"/>`;
+    
+    // Dimensions text
+    svg += `<text x="${pixelWidth/2 + 10}" y="15" text-anchor="middle" font-family="Arial" font-size="12" fill="#2d3748">${width} ${unit}</text>`;
+    svg += `<text x="5" y="${pixelHeight/2 + 20}" text-anchor="middle" font-family="Arial" font-size="12" fill="#2d3748" transform="rotate(-90, 5, ${pixelHeight/2 + 20})">${height} ${unit}</text>`;
+    
+    // Product type label
+    svg += `<text x="${pixelWidth/2 + 10}" y="${pixelHeight + 35}" text-anchor="middle" font-family="Arial" font-size="10" fill="#4a5568">Fixed Window</text>`;
+    
+    svg += '</svg>';
+    return svg;
+}
+
+/**
+ * Generate SVG for a door
+ * @param {number} width - Width in specified unit
+ * @param {number} height - Height in specified unit
+ * @param {string} unit - Dimension unit
+ * @param {string} doorType - 'single' or 'double'
+ * @returns {string} - SVG string
+ */
+function generateDoorSVG(width, height, unit, doorType = 'single') {
+    const pixelWidth = convertToPixels(width, unit);
+    const pixelHeight = convertToPixels(height, unit);
+    const frameThickness = 8;
+    const glassInset = 4;
+    
+    let svg = `<svg width="${pixelWidth + 20}" height="${pixelHeight + 40}" viewBox="0 0 ${pixelWidth + 20} ${pixelHeight + 40}" xmlns="http://www.w3.org/2000/svg">`;
+    
+    // Background
+    svg += `<rect width="${pixelWidth + 20}" height="${pixelHeight + 40}" fill="#f8f9fa"/>`;
+    
+    // Main frame
+    svg += `<rect x="10" y="20" width="${pixelWidth}" height="${pixelHeight}" fill="#8b9dc3" stroke="#4a5568" stroke-width="2"/>`;
+    
+    // Floor/threshold
+    svg += `<rect x="10" y="${20 + pixelHeight - 10}" width="${pixelWidth}" height="10" fill="#6b7280"/>`;
+    
+    if (doorType === 'double') {
+        // Double door - two panels
+        const panelWidth = (pixelWidth - 3*frameThickness) / 2;
+        
+        // Left panel
+        svg += `<rect x="${10 + frameThickness}" y="${20 + frameThickness}" width="${panelWidth}" height="${pixelHeight - 2*frameThickness}" fill="#a0aec0" stroke="#4a5568" stroke-width="1"/>`;
+        
+        // Glass area in left panel (upper portion)
+        const glassHeight = (pixelHeight - 2*frameThickness) * 0.6;
+        svg += `<rect x="${10 + frameThickness + glassInset}" y="${20 + frameThickness + glassInset}" width="${panelWidth - 2*glassInset}" height="${glassHeight - glassInset}" fill="#e6fffa" stroke="#81c9c6" stroke-width="1" opacity="0.7"/>`;
+        
+        // Center mullion
+        svg += `<rect x="${10 + frameThickness + panelWidth}" y="${20 + frameThickness}" width="${frameThickness}" height="${pixelHeight - 2*frameThickness}" fill="#8b9dc3"/>`;
+        
+        // Right panel
+        svg += `<rect x="${10 + 2*frameThickness + panelWidth}" y="${20 + frameThickness}" width="${panelWidth}" height="${pixelHeight - 2*frameThickness}" fill="#a0aec0" stroke="#4a5568" stroke-width="1"/>`;
+        
+        // Glass area in right panel (upper portion)
+        svg += `<rect x="${10 + 2*frameThickness + panelWidth + glassInset}" y="${20 + frameThickness + glassInset}" width="${panelWidth - 2*glassInset}" height="${glassHeight - glassInset}" fill="#e6fffa" stroke="#81c9c6" stroke-width="1" opacity="0.7"/>`;
+        
+        // Handles
+        svg += `<circle cx="${10 + frameThickness + 15}" cy="${20 + frameThickness + pixelHeight/3}" r="4" fill="#2d3748"/>`;
+        svg += `<circle cx="${10 + 2*frameThickness + panelWidth + panelWidth - 15}" cy="${20 + frameThickness + pixelHeight/3}" r="4" fill="#2d3748"/>`;
+        
+        // Hinges
+        svg += `<rect x="${10 + frameThickness - 2}" y="${20 + frameThickness + 20}" width="4" height="12" fill="#2d3748"/>`;
+        svg += `<rect x="${10 + frameThickness - 2}" y="${20 + pixelHeight - frameThickness - 32}" width="4" height="12" fill="#2d3748"/>`;
+        svg += `<rect x="${10 + 2*frameThickness + 2*panelWidth + 2}" y="${20 + frameThickness + 20}" width="4" height="12" fill="#2d3748"/>`;
+        svg += `<rect x="${10 + 2*frameThickness + 2*panelWidth + 2}" y="${20 + pixelHeight - frameThickness - 32}" width="4" height="12" fill="#2d3748"/>`;
+    } else {
+        // Single door
+        svg += `<rect x="${10 + frameThickness}" y="${20 + frameThickness}" width="${pixelWidth - 2*frameThickness}" height="${pixelHeight - 2*frameThickness}" fill="#a0aec0" stroke="#4a5568" stroke-width="1"/>`;
+        
+        // Glass area (upper portion)
+        const glassHeight = (pixelHeight - 2*frameThickness) * 0.6;
+        svg += `<rect x="${10 + frameThickness + glassInset}" y="${20 + frameThickness + glassInset}" width="${pixelWidth - 2*frameThickness - 2*glassInset}" height="${glassHeight - glassInset}" fill="#e6fffa" stroke="#81c9c6" stroke-width="1" opacity="0.7"/>`;
+        
+        // Handle
+        svg += `<circle cx="${10 + frameThickness + 15}" cy="${20 + frameThickness + pixelHeight/3}" r="4" fill="#2d3748"/>`;
+        
+        // Hinges
+        svg += `<rect x="${10 + frameThickness - 2}" y="${20 + frameThickness + 20}" width="4" height="12" fill="#2d3748"/>`;
+        svg += `<rect x="${10 + frameThickness - 2}" y="${20 + pixelHeight - frameThickness - 32}" width="4" height="12" fill="#2d3748"/>`;
+    }
+    
+    // Dimensions text
+    svg += `<text x="${pixelWidth/2 + 10}" y="15" text-anchor="middle" font-family="Arial" font-size="12" fill="#2d3748">${width} ${unit}</text>`;
+    svg += `<text x="5" y="${pixelHeight/2 + 20}" text-anchor="middle" font-family="Arial" font-size="12" fill="#2d3748" transform="rotate(-90, 5, ${pixelHeight/2 + 20})">${height} ${unit}</text>`;
+    
+    // Product type label
+    svg += `<text x="${pixelWidth/2 + 10}" y="${pixelHeight + 35}" text-anchor="middle" font-family="Arial" font-size="10" fill="#4a5568">${doorType === 'double' ? 'Double' : 'Single'} Door</text>`;
+    
+    svg += '</svg>';
+    return svg;
+}
+
+/**
+ * Main function to generate SVG based on product type and dimensions
+ * @param {string} productTypeName - Name of the product type
+ * @param {number} width - Width in specified unit
+ * @param {number} height - Height in specified unit
+ * @param {string} unit - Dimension unit ('inches', 'mm', 'ft', 'm')
+ * @returns {string} - SVG string
+ */
+function generateProductSVG(productTypeName, width, height, unit = 'inches') {
+    const lowerName = productTypeName.toLowerCase();
+    
+    // Detect product type and generate appropriate SVG
+    if (lowerName.includes('3track') || lowerName.includes('3-track')) {
+        return generateSlidingWindowSVG(width, height, unit, 3);
+    } else if (lowerName.includes('2track') || lowerName.includes('2-track') || lowerName.includes('sliding')) {
+        return generateSlidingWindowSVG(width, height, unit, 2);
+    } else if (lowerName.includes('4track') || lowerName.includes('4-track')) {
+        return generateSlidingWindowSVG(width, height, unit, 4);
+    } else if (lowerName.includes('double casement') || lowerName.includes('casement double')) {
+        return generateCasementWindowSVG(width, height, unit, 'double');
+    } else if (lowerName.includes('casement')) {
+        return generateCasementWindowSVG(width, height, unit, 'single');
+    } else if (lowerName.includes('fixed') || lowerName.includes('picture')) {
+        return generateFixedWindowSVG(width, height, unit);
+    } else if (lowerName.includes('double door') || lowerName.includes('door double')) {
+        return generateDoorSVG(width, height, unit, 'double');
+    } else if (lowerName.includes('door')) {
+        return generateDoorSVG(width, height, unit, 'single');
+    } else {
+        // Default to fixed window for unknown types
+        return generateFixedWindowSVG(width, height, unit);
+    }
+}
+
+module.exports = {
+    generateProductSVG,
+    generateSlidingWindowSVG,
+    generateCasementWindowSVG,
+    generateFixedWindowSVG,
+    generateDoorSVG,
+    convertToPixels
+}; 

@@ -1,0 +1,1247 @@
+Product Requirements Document (PRD): Aluminium Window ERP
+Version: 2.0 (Revised based on Google Sheet Workflow)
+Date: October 26, 2023
+Author/PM: [Your Name/AI Assistant]
+Stakeholders: Development Team, Business Owner
+
+1. Introduction
+This document outlines the requirements for a web-based ERP application designed specifically for aluminium window manufacturers. The system aims to streamline operations from client management and quoting through material estimation, inventory control (including standard pipe lengths), cutting optimization, manufacturing tracking, invoicing, and reporting. A key differentiator is the accurate management of profile inventory based on standard purchase lengths (e.g., 12ft, 15ft, 16ft pipes) and an integrated cutting optimization engine to minimize waste, directly reflecting common industry practices.
+
+2. Goals
+Provide an end-to-end workflow management solution.
+Improve quoting accuracy through integrated material formulas and area calculations.
+NEW: Accurately track inventory of raw materials, specifically profiles, based on standard available lengths (pipes).
+NEW: Implement a cutting optimization engine to minimize profile wastage based on required cuts and available standard pipe lengths.
+Streamline order processing and manufacturing workflows.
+Enhance visibility into stock levels, production status, and financial performance.
+Offer a multi-tenant SaaS solution with subscription billing.
+
+3. User Roles & Permissions (RBAC)
+Super Admin: Manages the entire platform (tenants, core settings).
+Tenant Admin: Manages company settings, staff, billing, and has full access within their company.
+Manager: Can manage most operational modules (Clients, Products, Quotes, Orders, Inventory, Manufacturing) but not company settings or billing.
+Staff: Limited access, primarily focused on assigned tasks (e.g., creating quotes, updating order status, viewing manufacturing plans). Permissions can be granularly adjusted by Admins/Managers.
+
+4. Software Modules/Domains
+
+Based on the PRD, the logical modules are:
+
+Tenant & Auth Management: (Combines Company Sign-Up, Staff Management, RBAC, Auth, Password Reset) - Manages companies (tenants), users within those companies, their roles, and authentication.
+
+Settings Management: Company-specific configurations (Units, T&C, Charges, GST, Notifications, Help).
+
+Client Management (CRM): Managing customer profiles, interactions, and history.
+
+Product & Formula Management: Defining window types and their associated material calculation formulas.
+
+Inventory Management: Tracking raw materials (profiles, glass, hardware).
+
+Material Estimation: Pre-quotation tool for site-level material and cost estimation.
+
+Quotation Management: Creating, sending, and tracking formal quotations.
+
+Order Management: Converting quotes to orders, confirming measurements, checking stock.
+
+Manufacturing Management: Cutting optimization, visualization, and production stage tracking.
+
+Accounting & Invoicing: Generating invoices and tracking payments.
+
+Subscription & Billing: Managing subscription plans and payments via Razorpay.
+
+Reporting: Aggregating data for insights across modules.
+
+5. Module Breakdown: Features, Endpoints, Schemas, Frontend
+
+(Note: Schemas use Mongoose syntax. Frontend uses Next.js App Router conventions. Changes based on Google Sheet logic are marked with NEW/REVISED.)
+
+Module 1: Tenant & Auth Management
+
+Key Features: Company registration, admin creation, profile editing, staff invites, user CRUD, role assignment, login/logout, password reset, multi-tenant data isolation.
+
+Backend Endpoints:
+
+POST /api/auth/register: Company sign-up (creates Company, Admin User).
+
+POST /api/auth/login: User login (returns JWT/session).
+
+POST /api/auth/logout: User logout.
+
+POST /api/auth/request-password-reset: Send reset email.
+
+POST /api/auth/reset-password: Reset password using token.
+
+GET /api/companies/my: Get current user's company profile.
+
+PUT /api/companies/my: Update current user's company profile.
+
+GET /api/staff: List staff for the company (Admin/Manager).
+
+POST /api/staff/invite: Invite staff via email (Admin).
+
+POST /api/staff: Create staff manually (Admin).
+
+GET /api/staff/{userId}: Get specific staff details.
+
+PUT /api/staff/{userId}: Update staff details/role (Admin).
+
+DELETE /api/staff/{userId}: Deactivate/delete staff (Admin).
+
+PUT /api/staff/{userId}/status: Activate/Deactivate staff (Admin).
+
+GET /api/roles: List available roles.
+
+MongoDB Schemas:
+
+// models/Company.js
+const mongoose = require('mongoose');
+const companySchema = new mongoose.Schema({
+    name: { type: String, required: true },
+    email: { type: String, required: true, unique: true },
+    phone: String,
+    address: String,
+    industry: String, // e.g., 'Window Manufacturing'
+    logoUrl: String,
+    subscriptionPlan: { type: String, default: 'free' }, // or ObjectId ref:'SubscriptionPlan'
+    subscriptionStatus: { type: String, enum: ['active', 'inactive', 'trial', 'past_due'], default: 'trial' },
+    razorpayCustomerId: String, // For billing
+    // Default settings can be stored here or in a separate Settings document
+    defaultDimensionUnit: { type: String, enum: ['inches', 'mm'], default: 'inches' },
+    defaultAreaUnit: { type: String, enum: ['sqft', 'sqm'], default: 'sqft' },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
+}, { timestamps: true });
+module.exports = mongoose.model('Company', companySchema);
+
+// models/User.js
+const mongoose = require('mongoose');
+const bcrypt = require('bcrypt');
+const userSchema = new mongoose.Schema({
+    companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true, index: true },
+    email: { type: String, required: true, lowercase: true, index: true }, // Unique within a company
+    password: { type: String, required: true },
+    firstName: String,
+    lastName: String,
+    phone: String,
+    role: { type: String, enum: ['Admin', 'Manager', 'Staff'], required: true },
+    isActive: { type: Boolean, default: true },
+    invitationToken: String,
+    invitationExpires: Date,
+    passwordResetToken: String,
+    passwordResetExpires: Date,
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
+}, { timestamps: true });
+
+// Ensure email is unique per company
+userSchema.index({ companyId: 1, email: 1 }, { unique: true });
+
+// Password hashing middleware
+userSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) return next();
+  this.password = await bcrypt.hash(this.password, 12);
+  next();
+});
+
+userSchema.methods.comparePassword = async function(candidatePassword) {
+  return bcrypt.compare(candidatePassword, this.password);
+};
+
+module.exports = mongoose.model('User', userSchema);
+
+
+Frontend Structure (Next.js App Router):
+
+/auth/login: Login page.
+
+/auth/register: Company sign-up page.
+
+/auth/forgot-password: Forgot password request page.
+
+/auth/reset-password: Password reset page (with token).
+
+/dashboard/settings/company: Company profile editing page.
+
+/dashboard/settings/staff: Staff listing page (<StaffTable />).
+
+/dashboard/settings/staff/new: Create staff page (<StaffForm />).
+
+/dashboard/settings/staff/invite: Invite staff page (<InviteForm />).
+
+/dashboard/settings/staff/[userId]/edit: Edit staff page (<StaffForm />).
+
+Components: LoginForm, RegisterForm, StaffTable, StaffForm, InviteForm, RoleSelector.
+
+Key Validations/Rules:
+
+Company email must be unique globally.
+
+User email must be unique within a company.
+
+Password complexity rules.
+
+Role-based access control middleware on backend routes.
+
+Invitation/Password reset tokens must expire.
+
+Ensure companyId is added to all queries for data isolation.
+
+Module 2: Settings Management
+
+Key Features: Manage T&C, predefined charges, GST settings, unit preferences, notifications, help center access.
+
+Backend Endpoints:
+
+GET /api/settings: Get all settings for the company.
+
+PUT /api/settings: Update various settings (T&C, units, GST, etc.).
+
+GET /api/settings/charges: List predefined charge types.
+
+POST /api/settings/charges: Add a charge type.
+
+PUT /api/settings/charges/{chargeId}: Update a charge type.
+
+DELETE /api/settings/charges/{chargeId}: Delete a charge type.
+
+GET /api/settings/help: Get help center content (or redirect).
+
+GET /api/settings/changelog: Get changelog content.
+
+MongoDB Schema:
+
+// models/Setting.js
+const mongoose = require('mongoose');
+const settingSchema = new mongoose.Schema({
+    companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true, unique: true, index: true },
+    termsAndConditions: {
+       quotation: { type: String, default: '' },
+       invoice: { type: String, default: '' }
+    },
+    predefinedCharges: [{
+        name: { type: String, required: true },
+        isDefault: { type: Boolean, default: false } // e.g., for Freight, Loading
+    }],
+    gst: {
+        enabled: { type: Boolean, default: false },
+        percentage: { type: Number, default: 0 }
+    },
+    units: {
+        dimension: { type: String, enum: ['inches', 'mm'], default: 'inches' },
+        area: { type: String, enum: ['sqft', 'sqm'], default: 'sqft' }
+        // Add rounding/minimum rules here if configurable
+    },
+    notifications: {
+        systemAlertsEnabled: { type: Boolean, default: true },
+        emailSummaryEnabled: { type: Boolean, default: true },
+        // Add more notification toggles
+    },
+    // Help/Changelog content might be managed elsewhere or linked here
+    updatedAt: { type: Date, default: Date.now },
+}, { timestamps: { createdAt: false, updatedAt: true } }); // No createdAt needed if created with company
+module.exports = mongoose.model('Setting', settingSchema);
+IGNORE_WHEN_COPYING_START
+content_copy
+download
+Use code with caution.
+JavaScript
+IGNORE_WHEN_COPYING_END
+
+Frontend Structure:
+
+/dashboard/settings/general: Page for Units, GST, T&C. (<UnitSettingsForm>, <GstSettingsForm>, <TermsEditor>)
+
+/dashboard/settings/charges: Page for managing predefined charges (<ChargesTable>, <ChargeForm>).
+
+/dashboard/settings/notifications: Notification preferences page.
+
+/dashboard/help: Help Center page.
+
+/dashboard/changelog: Changelog page.
+
+Components: RichTextEditor (for T&C), SettingsFormSection.
+
+Key Validations/Rules:
+
+Ensure unit changes don't affect existing documents (store units in Quote/Order).
+
+GST percentage should be numeric.
+
+Charge names should be unique within the company.
+
+Module 3: Client Management (CRM)
+
+Key Features: Client profile CRUD, lead source tracking, follow-up status, notes/reminders, client history view.
+
+Backend Endpoints:
+
+GET /api/clients: List clients with filtering/searching/pagination.
+
+POST /api/clients: Create a new client.
+
+GET /api/clients/{clientId}: Get client details.
+
+PUT /api/clients/{clientId}: Update client details.
+
+DELETE /api/clients/{clientId}: Delete a client.
+
+POST /api/clients/{clientId}/notes: Add a note to a client.
+
+GET /api/clients/{clientId}/history: Get client activity history (quotes, orders).
+
+PUT /api/clients/{clientId}/status: Update follow-up status.
+
+MongoDB Schema:
+
+// models/Client.js
+const mongoose = require('mongoose');
+const clientSchema = new mongoose.Schema({
+    companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true, index: true },
+    clientName: { type: String, required: true }, // Can be person or company name
+    contactPerson: String, // If clientName is a company
+    contactNumber: { type: String, required: true },
+    email: { type: String, lowercase: true },
+    billingAddress: String,
+    siteAddress: String,
+    gstin: String, // Optional Tax ID
+    leadSource: String, // e.g., 'Website', 'Referral'
+    followUpStatus: { type: String, enum: ['New Lead', 'In Discussion', 'Quoted', 'Negotiation', 'Converted', 'Dropped'], default: 'New Lead' },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    notes: [{
+        text: String,
+        createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        createdAt: { type: Date, default: Date.now },
+        reminderDate: Date
+    }],
+    isActive: { type: Boolean, default: true },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
+}, { timestamps: true });
+module.exports = mongoose.model('Client', clientSchema);
+IGNORE_WHEN_COPYING_START
+content_copy
+download
+Use code with caution.
+JavaScript
+IGNORE_WHEN_COPYING_END
+
+Frontend Structure:
+
+/dashboard/clients: Client listing page (<ClientTable>, filters).
+
+/dashboard/clients/new: Create client page (<ClientForm>).
+
+/dashboard/clients/[clientId]: Client details page (tabs for Info, History, Notes). (<ClientInfoCard>, <ClientHistoryFeed>, <NotesSection>)
+
+/dashboard/clients/[clientId]/edit: Edit client page (<ClientForm>).
+
+Components: ClientTable, ClientForm, StatusBadge, NotesInput, ActivityTimeline.
+
+Key Validations/Rules:
+
+Contact number might require specific format validation.
+
+Email format validation.
+
+Ensure notes are linked to the user who created them.
+
+Module 4: Product & Formula Management (REVISED based on Category-Driven Units)
+Goal: Enable users to define window types (products), associate various categorized materials (profiles, glass, hardware) from inventory, and define formulas. For profiles, formulas generate required cut lengths. For other materials like glass or hardware, formulas generate required quantities (e.g., area in sqft, count in pcs). The output unit of these formulas (quantityUnit) must align with the usageUnit defined for the material in the Inventory module.
+Key Features:
+Define product types (e.g., "2-Track Sliding Window," "Casement Window").
+Associate materials from Inventory (profiles, glass, hardware, accessories) with each product type.
+For each associated material, define one or more formulas using variables (e.g., W for width, H for height) to calculate:
+Required cut lengths for profile materials (e.g., "W - 2.5", "H / 2").
+Required area for glass materials (e.g., "(W * H) / 144" if W,H in inches, output in sqft).
+Required count for hardware items (e.g., "2", "ceil(W / 24)").
+Specify the input unit for formula variables (W, H) (e.g., inches, mm).
+Specify the output unit (quantityUnit) for the formula result, which must match the usageUnit of the selected material (e.g., inches for profile cut length, sqft for glass area, pcs for hardware).
+Flag materials within a product that require cutting optimization (typically profiles).
+Optionally specify a default gauge for profile materials if a specific one is always used in this product.
+Validate formula syntax.
+Estimate raw material cost for a product (pre-optimization for profiles).
+Backend Endpoints:
+GET /api/products: List all product types for the company.
+POST /api/products: Create a new product type.
+GET /api/products/{productId}: Get details of a specific product type.
+PUT /api/products/{productId}: Update an existing product type.
+DELETE /api/products/{productId}: Delete a product type.
+POST /api/products/validate-formula: Validate the syntax of a given formula string.
+POST /api/products/calculate-cost: (For internal use or quick estimation) Calculates the raw material cost for a given product type and dimensions. For profiles, this cost is based on total length and inventory rate per usage unit, not optimized cutting from standard pipes.
+MongoDB Schema:
+// models/ProductType.js (REVISED)
+const mongoose = require('mongoose');
+const productTypeSchema = new mongoose.Schema({
+    companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true, index: true },
+    name: { type: String, required: true }, // e.g., "3Track Regular", "Casement Window Type A"
+    description: String,
+    imageUrl: String,
+    isActive: { type: Boolean, default: true },
+    materials: [{
+        materialId: { type: mongoose.Schema.Types.ObjectId, ref: 'Material', required: true },
+        materialNameSnapshot: String, // Name of the material at the time of adding to product
+        materialCategorySnapshot: { type: String, enum: ['Profile', 'Glass', 'Hardware', 'Accessories', 'Consumables'] }, // Category of material
+        // Formulas define the REQUIRED CUT LENGTHS (for Profiles) or QUANTITIES (for Glass/Hardware)
+        formulas: [String], // e.g., ["W", "H", "H-1.5", "(W-6)/2", "(W*H)/144", "2"]
+        // Unit expected by the formula variables (W, H)
+        formulaInputUnit: { type: String, enum: ['inches', 'mm', 'ft', 'm'], required: true },
+        // Unit the formula result represents (a specific cut length, area, or count).
+        // CRITICAL: This MUST align with the Material.usageUnit for the selected materialId.
+        quantityUnit: { type: String, required: true, enum: ['ft', 'inches', 'mm', 'sqft', 'sqm', 'pcs', 'kg'] },
+        isCutRequired: { type: Boolean, default: false }, // TRUE for profiles needing optimization
+        // Optional: Specify gauge if a specific one is always used for this material in this product
+        defaultGauge: String,
+    }],
+    defaultLabourCost: { type: mongoose.Types.Decimal128, default: '0.00' },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
+}, { timestamps: true });
+
+productTypeSchema.index({ companyId: 1, name: 1 }, { unique: true });
+module.exports = mongoose.model('ProductType', productTypeSchema);
+Use code with caution.
+JavaScript
+Frontend Structure (Next.js App Router):
+/dashboard/products: Product listing page.
+/dashboard/products/new: Create new product type page.
+/dashboard/products/[productId]/edit: Edit product type page.
+Components: ProductTable, ProductForm, MaterialFormulaInput (complex component for adding/editing materials within ProductForm).
+Key Validations/Rules:
+Formula syntax must be valid.
+materialId referenced in materials array must exist in the Materials collection for the company.
+Crucial: The materials.quantityUnit for each material entry in a ProductType must be compatible with (ideally identical to) the usageUnit defined for that specific Material in the Inventory module (e.g., if Material.usageUnit is 'inches', ProductType.materials.quantityUnit must also be 'inches'). This validation needs to happen on the backend during ProductType save and ideally guided on the frontend.
+Product name must be unique per company.
+isCutRequired should typically be true if materialCategorySnapshot is 'Profile'.
+
+
+Module 5: Inventory Management (REVISED based on Category-Driven Units & Profile Stocking)
+Goal: Provide a flexible inventory system that accurately tracks different categories of materials (Profiles, Glass, Hardware, etc.) according to their specific stocking and usage units. For Aluminium Profiles, this includes managing stock by standard purchase lengths (pipes) and gauges. For other materials like Glass or Hardware, it involves tracking total stock quantity in their respective units (e.g., sqft, pcs).
+Key Features:
+Material Master CRUD with category-driven fields and units.
+Define material category (Profile, Glass, Hardware, Accessories, Consumables).
+Define stockUnit (how material is primarily purchased/stocked, e.g., 'pipe' or 'kg' for Profiles, 'sqft' for Glass, 'pcs' for Hardware).
+Define usageUnit (how material is consumed in formulas, e.g., 'ft'/'inches' for Profile cuts, 'sqft' for Glass area, 'pcs' for Hardware count).
+For 'Profile' category:
+Define standard purchase lengths (e.g., 12ft, 15ft, 16ft pipes).
+Track stock quantity for each defined standard length (stockByLength).
+Record unitRate (cost per pipe) for each standard length.
+Store gaugeSpecificWeights (e.g., kg/ft for a given gauge) to facilitate weight calculations.
+Dedicated "Profile Stock Inward" workflow to accurately record purchases of profile pipes, automatically calculating weight per unit length and updating stock by length.
+For 'Glass', 'Hardware', 'Accessories', 'Consumables' categories:
+Track totalStockQuantity in the material's defined stockUnit.
+Record unitRateForStockUnit (e.g., cost per sqft, cost per piece).
+Manual stock adjustments:
+For Profiles: Adjust quantity of a specific standard length pipe or adjust total bulk quantity (e.g., in kg if stockUnit is 'kg').
+For Others: Adjust totalStockQuantity.
+Low stock alerts (configurable per standard length for profiles, or per total quantity for others).
+Detailed stock transaction history logging all movements (Inward, Outward, Adjustments, Scrap) with relevant units and values.
+Backend Endpoints:
+GET /api/inventory/materials: List all materials. Response structure varies based on category (e.g., includes stockByLength for Profiles, totalStockQuantity for others).
+POST /api/inventory/materials: Add a new material. Request body and processing logic are conditional based on the category.
+GET /api/inventory/materials/{materialId}: Get material details.
+PUT /api/inventory/materials/{materialId}: Update material details. Logic is conditional based on category.
+DELETE /api/inventory/materials/{materialId}: Delete a material (consider soft delete or checks for usage).
+NEW: POST /api/inventory/stock/inward-profile: Handles the specific scenario of purchasing aluminium profiles (e.g., 30 pcs of 15ft 18G pipes for a total weight and cost). Calculates weightPerUnitLength, updates gaugeSpecificWeights, updates stockByLength. Creates StockTransaction.
+POST /api/inventory/stock/adjust: Manually adjust stock.
+For Profiles: Can adjust quantity of a specific standard length pipe or adjust total bulk quantity (e.g. in kg).
+For Others: Adjusts totalStockQuantity.
+Creates a StockTransaction.
+GET /api/inventory/stock/history/{materialId}: Get stock transaction history for a material.
+GET /api/inventory/categories: List available material categories (can be static initially).
+MongoDB Schemas:
+// models/Material.js (FURTHER REVISED)
+const mongoose = require('mongoose');
+const materialSchema = new mongoose.Schema({
+    companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true, index: true },
+    name: { type: String, required: true }, // e.g., "3Track Top", "5mm Clear Glass", "Corner Cleat"
+    category: { type: String, enum: ['Profile', 'Glass', 'Hardware', 'Accessories', 'Consumables'], required: true },
+
+    // --- Category-Driven Units ---
+    stockUnit: { type: String, required: true }, // e.g., Profile: 'pipe' or 'kg'; Glass: 'sqft'; Hardware: 'pcs'
+    usageUnit: { type: String, required: true, enum: ['ft', 'inches', 'mm', 'sqft', 'sqm', 'pcs', 'kg'] },
+
+    // --- Fields primarily for Category: 'Profile' ---
+    standardLengths: [{ // Defines the standard lengths this profile is typically purchased/stocked in
+        length: { type: mongoose.Types.Decimal128, required: true },
+        unit: { type: String, required: true, default: 'ft' }, // e.g., 'ft', 'm'
+    }],
+    stockByLength: [{ // Tracks current stock for each standard length of a PROFILE
+        length: { type: mongoose.Types.Decimal128, required: true },
+        unit: { type: String, required: true, default: 'ft' },
+        quantity: { type: mongoose.Types.Decimal128, default: '0.00' }, // Number of pipes/pieces of this length
+        lowStockThreshold: { type: mongoose.Types.Decimal128, default: '0.00' }, // In pieces of this length
+        unitRate: { type: mongoose.Types.Decimal128, default: '0.00' }, // Cost PER PIPE of this standard length
+    }],
+    gaugeSpecificWeights: [{ // Stores weight conversion factors per gauge for PROFILES
+         gauge: { type: String }, // e.g., "18G", "20G"
+         weightPerUnitLength: { type: mongoose.Types.Decimal128 }, // e.g., 0.24 (in weightUnit per unitLength)
+         unitLength: { type: String, default: 'ft'} // e.g., 'ft' -> means X kg/ft (or lbs/ft)
+    }],
+    weightUnit: { type: String, default: 'kg', enum: ['kg', 'lbs'] }, // Unit for weight calculations (e.g., 'kg', 'lbs') - for Profiles
+
+    // --- Fields primarily for Category: 'Glass', 'Hardware', 'Accessories', 'Consumables' ---
+    // Also can be used for 'Profile' if tracking total stock quantity in 'stockUnit' (e.g. total kgs of a profile)
+    totalStockQuantity: { type: mongoose.Types.Decimal128, default: '0.00' }, // Stock in 'stockUnit'
+    unitRateForStockUnit: { type: mongoose.Types.Decimal128, default: '0.00' }, // Cost per 'stockUnit' (e.g., cost per sqft, cost per piece, cost per kg)
+    lowStockThresholdForStockUnit: { type: mongoose.Types.Decimal128, default: '0.00' }, // In 'stockUnit'
+
+    // General Fields
+    supplier: String,
+    brand: String,
+    hsnCode: String,
+    description: String,
+    isActive: { type: Boolean, default: true },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
+}, { timestamps: true });
+
+materialSchema.index({ companyId: 1, name: 1 }, { unique: true });
+materialSchema.index({ companyId: 1, category: 1 });
+
+module.exports = mongoose.model('Material', materialSchema);
+Use code with caution.
+JavaScript
+// models/StockTransaction.js (REVISED)
+const mongoose = require('mongoose');
+const stockTransactionSchema = new mongoose.Schema({
+    companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true, index: true },
+    materialId: { type: mongoose.Schema.Types.ObjectId, ref: 'Material', required: true, index: true },
+    type: { type: String, enum: ['Inward', 'Outward-Manual', 'Outward-OrderCut', 'Scrap', 'Correction', 'InitialStock'], required: true },
+
+    // For PROFILE transactions related to specific standard lengths (when type is 'Inward', 'Outward-OrderCut', or relevant 'Correction'/'Outward-Manual')
+    length: { type: mongoose.Types.Decimal128 }, // Standard length affected (e.g., 12, 15, 16)
+    lengthUnit: { type: String }, // Unit of the length (e.g., 'ft')
+
+    // General quantity change
+    quantityChange: { type: mongoose.Types.Decimal128, required: true }, // Change amount
+    // Unit of the quantityChange, e.g., 'pcs' for profile pipes, 'sqft' for glass, 'kg' for profile bulk, 'pcs' for hardware
+    quantityUnit: { type: String, required: true },
+
+    unitRateAtTransaction: { type: mongoose.Types.Decimal128 }, // Rate of the item at the time of transaction (per quantityUnit)
+    totalValueChange: { type: mongoose.Types.Decimal128 }, // quantityChange * unitRateAtTransaction (for valuation)
+
+    relatedDocumentType: String, // e.g., 'Order', 'PurchaseOrder', 'ManualAdjustment'
+    relatedDocumentId: mongoose.Schema.Types.ObjectId,
+    notes: String,
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    transactionDate: { type: Date, default: Date.now },
+});
+
+stockTransactionSchema.pre('save', function(next) {
+    if (this.quantityChange && this.unitRateAtTransaction && (this.totalValueChange === undefined || this.totalValueChange === null)) {
+        // Ensure multiplication is handled correctly with Decimal128
+        const qc = typeof this.quantityChange.toString === 'function' ? this.quantityChange : mongoose.Types.Decimal128.fromString(String(this.quantityChange));
+        const ur = typeof this.unitRateAtTransaction.toString === 'function' ? this.unitRateAtTransaction : mongoose.Types.Decimal128.fromString(String(this.unitRateAtTransaction));
+        this.totalValueChange = qc.multiply(ur);
+    }
+    next();
+});
+module.exports = mongoose.model('StockTransaction', stockTransactionSchema);
+Use code with caution.
+JavaScript
+Frontend Structure (Next.js App Router):
+/dashboard/inventory: Inventory listing page.
+/dashboard/inventory/new: Create new material page.
+/dashboard/inventory/[materialId]/edit: Edit material page.
+/dashboard/inventory/adjust: Stock adjustment page.
+/dashboard/inventory/[materialId]/history: Stock history page for a specific material.
+(New Recommended Route/Modal Trigger): A way to access "Profile Stock Inward" form, possibly from /dashboard/inventory or material detail page for profiles.
+Components: InventoryTable, MaterialForm (highly dynamic based on category), StockAdjustmentForm, StockHistoryTable, ProfileStockInwardForm.
+Key Validations/Rules:
+name must be unique per company.
+category selection drives available fields and unit options.
+For 'Profile' category:
+standardLengths entries must have positive length.
+stockByLength.quantity and lowStockThreshold must be non-negative.
+Calculations for gaugeSpecificWeights during profile stock inward must be accurate.
+For other categories: totalStockQuantity and lowStockThresholdForStockUnit must be non-negative.
+Stock adjustments must specify all required fields (e.g., length and lengthUnit if adjusting a specific profile pipe).
+StockTransaction records must accurately reflect the change, including correct quantityUnit.
+usageUnit selected must be appropriate for the material's intended use in formulas (e.g., a length unit for profiles, area unit for glass, count unit for hardware).
+
+Module 6: Material Estimation (REVISED based on Category-Driven Units)
+Goal: Provide a pre-quotation tool for users to quickly estimate raw material requirements and associated costs for a project based on site-level window/item inputs. This module leverages the product definitions and material formulas from Module 4 and considers the usageUnit from Module 5 for accurate quantity calculation and costing.
+Key Features:
+Create estimation projects with client details (optional) and project name.
+Input items (e.g., windows) by selecting a ProductType (from Module 4) and specifying dimensions (width, height) and quantity. The dimensionUnitUsed (e.g., inches, mm) for these inputs is recorded.
+Automatic calculation of required raw materials:
+For each item, the system uses the associated ProductType's material list and formulas.
+Formulas are evaluated using the item's dimensions (W, H) and the ProductType.materials.formulaInputUnit.
+The calculated quantity for each material is in the ProductType.materials.quantityUnit, which aligns with the Material.usageUnit (e.g., feet for profile cuts, sqft for glass area, pcs for hardware).
+These calculated quantities are aggregated per material across all items in the estimation.
+Manual cost input for calculated materials:
+Users can input a manualUnitRate for each aggregated material.
+Crucially, this manualUnitRate is expected to be per the material's usageUnit (e.g., cost per foot, cost per sqft, cost per piece).
+Input manual charges (e.g., labour, transport).
+View a summary report of estimated material quantities, costs, manual charges, and total estimated project cost.
+Generate a PDF summary of the estimation.
+(Optional) Convert a calculated estimation into a draft quotation.
+Backend Endpoints:
+POST /api/estimations: Create a new estimation project.
+GET /api/estimations: List saved estimations for the company.
+GET /api/estimations/{estimationId}: Get details of a specific estimation.
+PUT /api/estimations/{estimationId}: Update estimation details (items, costs, charges).
+POST /api/estimations/{estimationId}/calculate: Trigger material calculation. This populates/updates the calculatedMaterials array in the Estimation document.
+GET /api/estimations/{estimationId}/pdf: Generate and return a PDF summary of the estimation.
+POST /api/estimations/{estimationId}/to-quotation: (Optional) Convert the estimation to a draft Quotation.
+MongoDB Schema:
+// models/Estimation.js (Schema remains largely the same, interpretation of calculatedMaterials changes)
+const mongoose = require('mongoose');
+const estimationSchema = new mongoose.Schema({
+    companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true, index: true },
+    projectName: { type: String, required: true },
+    clientName: String, // Optional client link at this stage
+    clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', index: true },
+    status: { type: String, enum: ['Draft', 'Calculated', 'Archived'], default: 'Draft' },
+    dimensionUnitUsed: { type: String, enum: ['inches', 'mm', 'ft', 'm'], required: true }, // Unit for W/H inputs for items
+    // areaUnitUsed: { type: String, enum: ['sqft', 'sqm'], required: true }, // Less critical now as quantityUnit per material is primary
+    items: [{
+        productTypeId: { type: mongoose.Schema.Types.ObjectId, ref: 'ProductType', required: true },
+        productTypeNameSnapshot: String, // In case product name changes
+        width: { type: mongoose.Types.Decimal128, required: true },
+        height: { type: mongoose.Types.Decimal128, required: true },
+        quantity: { type: Number, required: true, default: 1 },
+        // calculatedArea: { type: mongoose.Types.Decimal128 }, // May still be useful for display or if some products are area-priced directly in estimation
+        // chargeableArea: { type: mongoose.Types.Decimal128 },
+        itemLabel: String // Optional label like "Master Bedroom Window"
+    }],
+    calculatedMaterials: [{ // Populated after calculation
+        materialId: { type: mongoose.Schema.Types.ObjectId, ref: 'Material', required: true },
+        materialNameSnapshot: String,
+        materialCategorySnapshot: { type: String, enum: ['Profile', 'Glass', 'Hardware', 'Accessories', 'Consumables'] },
+        totalQuantity: { type: mongoose.Types.Decimal128, required: true }, // Aggregated quantity from formulas
+        // QuantityUnit is the Material.usageUnit (e.g., 'ft', 'inches', 'sqft', 'pcs').
+        // This is CRITICAL for understanding totalQuantity and for applying manualUnitRate.
+        quantityUnit: { type: String, required: true, enum: ['ft', 'inches', 'mm', 'sqft', 'sqm', 'pcs', 'kg'] },
+        // User inputs this rate PER quantityUnit. E.g., if quantityUnit is 'ft', this is cost per foot.
+        // This rate is not necessarily the inventory rate, but a rate for estimation purposes.
+        manualUnitRate: { type: mongoose.Types.Decimal128, default: '0.00' },
+        calculatedCost: { type: mongoose.Types.Decimal128 } // totalQuantity * manualUnitRate
+    }],
+    manualCharges: [{ // Labour, Transport etc.
+        description: String,
+        amount: { type: mongoose.Types.Decimal128, default: '0.00' }
+    }],
+    subtotalMaterials: { type: mongoose.Types.Decimal128, default: '0.00' }, // Sum of all calculatedMaterial.calculatedCost
+    subtotalManualCharges: { type: mongoose.Types.Decimal128, default: '0.00' }, // Sum of all manualCharges.amount
+    totalEstimatedCost: { type: mongoose.Types.Decimal128, default: '0.00' }, // subtotalMaterials + subtotalManualCharges
+    markupPercentage: { type: mongoose.Types.Decimal128, default: '0.00' }, // Stored as decimal, e.g., 0.10 for 10%
+    markedUpTotal: { type: mongoose.Types.Decimal128, default: '0.00' }, // totalEstimatedCost * (1 + markupPercentage)
+    notes: String,
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
+}, { timestamps: true });
+
+// Pre-save hook to calculate subtotals and total
+estimationSchema.pre('save', function(next) {
+    this.subtotalMaterials = this.calculatedMaterials.reduce((acc, item) => {
+        const cost = item.calculatedCost || mongoose.Types.Decimal128.fromString('0.00');
+        return acc.add(cost);
+    }, mongoose.Types.Decimal128.fromString('0.00'));
+
+    this.subtotalManualCharges = this.manualCharges.reduce((acc, item) => {
+        const amount = item.amount || mongoose.Types.Decimal128.fromString('0.00');
+        return acc.add(amount);
+    }, mongoose.Types.Decimal128.fromString('0.00'));
+
+    this.totalEstimatedCost = this.subtotalMaterials.add(this.subtotalManualCharges);
+
+    const markup = this.markupPercentage || mongoose.Types.Decimal128.fromString('0.00');
+    const one = mongoose.Types.Decimal128.fromString('1.00');
+    this.markedUpTotal = this.totalEstimatedCost.multiply(one.add(markup));
+
+    // Update calculatedCost for each material if manualUnitRate or totalQuantity changed
+    this.calculatedMaterials.forEach(material => {
+        const quantity = material.totalQuantity || mongoose.Types.Decimal128.fromString('0.00');
+        const rate = material.manualUnitRate || mongoose.Types.Decimal128.fromString('0.00');
+        material.calculatedCost = quantity.multiply(rate);
+    });
+    next();
+});
+
+module.exports = mongoose.model('Estimation', estimationSchema);
+Use code with caution.
+JavaScript
+Frontend Structure (Next.js App Router):
+/dashboard/estimations: Estimation listing page.
+/dashboard/estimations/new: Create new estimation (Step 1: Project Info & Items).
+/dashboard/estimations/[estimationId]/edit: Edit estimation (can navigate between item input and cost input steps).
+/dashboard/estimations/[estimationId]/calculate (or as part of edit): (Step 2: View Calculated Materials, Input Manual Rates & Charges).
+/dashboard/estimations/[estimationId]/summary: View estimation summary & PDF download option.
+Components: EstimationTable, EstimationItemInputGrid (for items), ProductTypeSelector, MaterialCostingTable (displays calculatedMaterials), ManualChargesForm, EstimationSummaryReport.
+Key Validations/Rules:
+Dimensions (width, height) for items must be positive numbers.
+The material calculation logic in the backend must correctly:
+Use formulas from the selected ProductType.
+Use the specified dimensionUnitUsed for W, H inputs to the formulas.
+Aggregate quantities for each materialId across all estimation items.
+The resulting totalQuantity for each material in calculatedMaterials must be in the unit defined by Material.usageUnit (which is mirrored in ProductType.materials.quantityUnit).
+The quantityUnit field in calculatedMaterials must accurately store this Material.usageUnit.
+Cost calculation (calculatedCost in calculatedMaterials) must use totalQuantity and manualUnitRate, where manualUnitRate is per the quantityUnit.
+The dimensionUnitUsed for the estimation items must be stored.
+
+Module 7: Quotation Management
+
+Key Features: Itemized quote builder (using Product Types), dimension input, quantity, price per area unit, auto area calculation (with rounding/minimums), predefined/custom charges, GST calculation, discount, PDF generation, status tracking, optional communication integration, SVG preview.
+
+Backend Endpoints:
+
+GET /api/quotations: List quotations with filters/search.
+
+POST /api/quotations: Create a new draft quotation.
+
+GET /api/quotations/{quotationId}: Get quotation details.
+
+PUT /api/quotations/{quotationId}: Update a draft quotation.
+
+DELETE /api/quotations/{quotationId}: Delete a draft quotation.
+
+POST /api/quotations/{quotationId}/send: Mark quotation as sent (triggers email/WhatsApp if integrated).
+
+PUT /api/quotations/{quotationId}/status: Update quotation status (Viewed, Accepted, Rejected).
+
+GET /api/quotations/{quotationId}/pdf: Generate and return PDF.
+
+GET /api/quotations/{quotationId}/svg/{itemId}: Generate SVG preview for a specific item.
+
+MongoDB Schema:
+
+// models/Quotation.js
+const mongoose = require('mongoose');
+const quotationSchema = new mongoose.Schema({
+    companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true, index: true },
+    quotationIdDisplay: { type: String, required: true, unique: true }, // User-friendly ID like Q-2024-001
+    clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
+    clientSnapshot: { // Store client details at time of creation
+        clientName: String,
+        contactPerson: String,
+        contactNumber: String,
+        email: String,
+        billingAddress: String,
+        siteAddress: String,
+        gstin: String,
+    },
+    status: { type: String, enum: ['Draft', 'Sent', 'Viewed', 'Accepted', 'Rejected', 'Expired', 'Converted'], default: 'Draft' },
+    dimensionUnit: { type: String, enum: ['inches', 'mm'], required: true }, // Copied from settings or estimation
+    areaUnit: { type: String, enum: ['sqft', 'sqm'], required: true }, // Copied from settings or estimation
+    priceUnit: { type: String, enum: ['sqft', 'sqm'], required: true }, // Price per sqft or sqm
+    // Area calculation rules applied at time of creation
+    areaRoundingRule: String, // e.g., 'nearest_0.25', 'nearest_0.5', 'nearest_0.023'
+    minimumChargeableArea: mongoose.Types.Decimal128,
+    items: [{
+        productTypeId: { type: mongoose.Schema.Types.ObjectId, ref: 'ProductType', required: true },
+        productTypeNameSnapshot: String,
+        width: { type: mongoose.Types.Decimal128, required: true },
+        height: { type: mongoose.Types.Decimal128, required: true },
+        quantity: { type: Number, required: true, default: 1 },
+        itemLabel: String, // Optional description like "Living Room Window"
+        // Calculated values stored per item
+        rawAreaPerItem: { type: mongoose.Types.Decimal128 }, // W x H in areaUnit
+        roundedAreaPerItem: { type: mongoose.Types.Decimal128 }, // After rounding
+        chargeableAreaPerItem: { type: mongoose.Types.Decimal128 }, // After minimum area rule
+        totalChargeableArea: { type: mongoose.Types.Decimal128 }, // chargeableAreaPerItem * quantity
+        pricePerAreaUnit: { type: mongoose.Types.Decimal128, required: true },
+        itemSubtotal: { type: mongoose.Types.Decimal128 }, // totalChargeableArea * pricePerAreaUnit
+        // Material list snapshot for this item (optional, useful for later analysis/order conversion)
+        materialsSnapshot: [{
+            materialId: mongoose.Schema.Types.ObjectId,
+            materialName: String,
+            quantity: mongoose.Types.Decimal128,
+            unit: String
+        }],
+        // SVG data can be generated on demand or stored if complex
+        // svgPreviewData: String,
+    }],
+    charges: [{
+        description: String, // e.g., "Freight", "GST", "Custom Charge"
+        amount: { type: mongoose.Types.Decimal128, required: true },
+        isTax: { type: Boolean, default: false },
+        isPredefined: { type: Boolean, default: false } // Was this from settings?
+    }],
+    discount: {
+        type: { type: String, enum: ['percentage', 'fixed'], default: 'fixed' },
+        value: { type: mongoose.Types.Decimal128, default: '0.00' }
+    },
+    // Calculated Totals
+    subtotal: { type: mongoose.Types.Decimal128 }, // Sum of itemSubtotals
+    totalCharges: { type: mongoose.Types.Decimal128 },
+    totalTax: { type: mongoose.Types.Decimal128 },
+    grandTotal: { type: mongoose.Types.Decimal128 },
+    // Metadata
+    termsAndConditions: String, // Copied from settings at time of creation
+    notes: String,
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    validUntil: Date,
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
+}, { timestamps: true });
+
+// Auto-incrementing display ID logic would typically be handled via a counter collection or plugin
+module.exports = mongoose.model('Quotation', quotationSchema);
+
+
+Frontend Structure:
+
+/dashboard/quotations: Quotation listing page (<QuotationTable>, filters).
+
+/dashboard/quotations/new: Create quotation page (<QuotationForm>).
+
+/dashboard/quotations/[quotationId]: View quotation details page (<QuotationDetailView>, <StatusUpdater>).
+
+/dashboard/quotations/[quotationId]/edit: Edit draft quotation page (<QuotationForm>).
+
+/dashboard/quotations/[quotationId]/pdf: PDF preview page/modal.
+
+Components: QuotationForm, QuotationItemInput (includes product select, dimensions, quantity, price), ChargeInput, QuotationTotalsSummary, QuotationPDFView, SVGWindowPreview.
+
+Key Validations/Rules:
+
+Implement area calculation logic precisely (unit conversion, rounding, minimums) based on stored dimensionUnit, areaUnit, areaRoundingRule, minimumChargeableArea.
+
+Ensure all calculations use Decimal128 to avoid precision errors.
+
+GST calculation based on company settings (if enabled).
+
+Store snapshots of client details, product names, T&C, and units to ensure historical accuracy.
+
+Status transitions logic (e.g., cannot edit an 'Accepted' quote directly).
+
+Generate unique, sequential quotationIdDisplay.
+
+Module 8: Order Management (REVISED)
+Key Features: Convert accepted quote to order, lock data, final measurement confirmation, generate consolidated list of required cuts per material, status tracking, trigger pre-optimization stock check.
+Backend Endpoints:
+/api/orders/from-quotation/{quotationId}: Create order.
+/api/orders: List orders.
+/api/orders/{orderId}: Get order details.
+/api/orders/{orderId}/confirm-measurements: Update dimensions/quantities.
+GET /api/orders/{orderId}/required-cuts: NEW Endpoint. Calculates and returns aggregated list of all required cut lengths for each profile material. (Input for optimization).
+POST /api/orders/{orderId}/check-stock: Rough check if total length required is available across all pipes (pre-optimization).
+/api/orders/{orderId}/status: Update order status.
+/api/orders/{orderId}/history: Get audit trail.
+MongoDB Schema:
+// models/Order.js (REVISED)
+const mongoose = require('mongoose');
+const orderSchema = new mongoose.Schema({
+    companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true, index: true },
+    orderIdDisplay: { type: String, required: true, unique: true }, // e.g., SO-2024-001
+    quotationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Quotation', required: true, index: true },
+    quotationIdDisplaySnapshot: String,
+    clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
+    clientSnapshot: { /* ... copied from Quotation ... */ },
+    status: { type: String, enum: ['Pending', 'Measurement Confirmed', 'Ready for Optimization', 'Optimization Complete', 'In Production', 'Cutting', 'Assembly', 'QC', 'Packed', 'Delivered', 'Completed', 'Cancelled'], default: 'Pending' },
+    dimensionUnit: { type: String, enum: ['inches', 'mm'], required: true }, // Copied from Quotation
+    areaUnit: { type: String, enum: ['sqft', 'sqm'], required: true }, // Copied from Quotation
+    priceUnit: { type: String, enum: ['sqft', 'sqm'], required: true }, // Copied from Quotation
+    items: [{ // Copied from Quotation, potentially updated after measurement confirmation
+        productTypeId: { type: mongoose.Schema.Types.ObjectId, ref: 'ProductType', required: true },
+        productTypeNameSnapshot: String,
+        originalWidth: { type: mongoose.Types.Decimal128 }, finalWidth: { type: mongoose.Types.Decimal128, required: true },
+        originalHeight: { type: mongoose.Types.Decimal128 }, finalHeight: { type: mongoose.Types.Decimal128, required: true },
+        originalQuantity: Number, finalQuantity: { type: Number, required: true },
+        itemLabel: String,
+        finalChargeableAreaPerItem: { type: mongoose.Types.Decimal128 },
+        finalTotalChargeableArea: { type: mongoose.Types.Decimal128 },
+        pricePerAreaUnit: { type: mongoose.Types.Decimal128, required: true },
+        finalItemSubtotal: { type: mongoose.Types.Decimal128 },
+        // *** REVISED: Store the exact cuts needed for THIS item ***
+        requiredMaterialCuts: [{
+             materialId: { type: mongoose.Schema.Types.ObjectId, ref: 'Material' },
+             materialNameSnapshot: String,
+             gaugeSnapshot: String, // Capture gauge used for this item (maybe from ProductType default or selected)
+             cutLengths: [mongoose.Types.Decimal128], // Cut lengths derived from formulas for THIS item * finalQuantity
+             lengthUnit: String, // e.g., 'inches'
+             isCutRequired: Boolean,
+        }],
+    }],
+    charges: [/* ... copied from Quotation ... */],
+    discount: { /* ... copied from Quotation ... */ },
+    finalSubtotal: { type: mongoose.Types.Decimal128 }, finalTotalCharges: { type: mongoose.Types.Decimal128 },
+    finalTotalTax: { type: mongoose.Types.Decimal128 }, finalGrandTotal: { type: mongoose.Types.Decimal128 },
+    // *** NEW: Link to Manufacturing/Optimization Results ***
+    cuttingPlanId: { type: mongoose.Schema.Types.ObjectId, ref: 'CuttingPlan', index: true }, // Link to the generated plan
+    cuttingPlanStatus: { type: String, enum: ['Pending', 'Generated', 'Committed'], default: 'Pending' }, // Mirror status
+    // Measurement Confirmation
+    measurementConfirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, measurementConfirmedAt: Date,
+    // Audit Trail
+    history: [{ status: String, notes: String, updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, timestamp: { type: Date, default: Date.now } }],
+    termsAndConditions: String, notes: String,
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    createdAt: { type: Date, default: Date.now }, updatedAt: { type: Date, default: Date.now },
+}, { timestamps: true });
+module.exports = mongoose.model('Order', orderSchema);
+Use code with caution.
+JavaScript
+Frontend Structure: /dashboard/orders/*. Materials tab should show aggregated required cuts (pre-optimization) and later the optimized plan summary.
+Key Validations: Only 'Accepted' quotes convert. Measurement confirmation needs permissions. Recalculate totals if measurements change. Calculate requiredMaterialCuts accurately based on final dimensions/formulas/quantity. Unique orderIdDisplay.
+
+Module 9: Manufacturing Management (REVISED)
+Key Features: Cutting optimization engine (bin packing) using available standard inventory lengths (e.g., 12ft, 15ft, 16ft pipes), generation of cutting plan, calculation of scrap per pipe, SVG visualization, manufacturing stage tracking, inventory deduction of consumed standard pipes, generate pipe order summary.
+Backend Endpoints:
+POST /api/manufacturing/optimize-cuts: Core Logic. Takes orderId. Fetches required cuts and available stockByLength. Runs optimization algorithm. Stores result in CuttingPlan collection. Updates Order.cuttingPlanId and Order.cuttingPlanStatus.
+GET /api/manufacturing/orders/{orderId}/cutting-plan: Retrieves the generated CuttingPlan document for the order.
+GET /api/manufacturing/orders/{orderId}/cutting-plan/svg: Generates SVG visualization of the CuttingPlan.
+GET /api/manufacturing/orders/{orderId}/pipe-order-summary: NEW Endpoint. Analyzes the CuttingPlan and returns aggregated summary (pipes of each standard length needed, scrap, total weight per material), similar to the Google Sheet output.
+PUT /api/manufacturing/orders/{orderId}/stage: Update overall manufacturing stage (linked to Order.status).
+POST /api/manufacturing/orders/{orderId}/commit-cuts: Modified. Reads CuttingPlan. Creates StockTransaction for each pipe used (deducting qty 1 of the specific standardLength). Updates Order.cuttingPlanStatus to 'Committed' and advances Order.status. Handles scrap logging/tracking.
+MongoDB Schema:
+// models/CuttingPlan.js (NEW - Recommended Separate Collection)
+const mongoose = require('mongoose');
+const cuttingPlanSchema = new mongoose.Schema({
+    companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true, index: true },
+    orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true, unique: true, index: true },
+    generatedAt: { type: Date, default: Date.now },
+    generatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    status: { type: String, enum: ['Generated', 'Committed'], default: 'Generated' },
+    // Detailed plan, one entry PER MATERIAL optimized
+    materialPlans: [{
+        materialId: { type: mongoose.Schema.Types.ObjectId, ref: 'Material' },
+        materialNameSnapshot: String,
+        gaugeSnapshot: String, // Gauge used for this material in this order
+        usageUnit: String, // Unit of the cuts (e.g., 'inches')
+        // Plan details: One entry PER STANDARD PIPE CONSUMED
+        pipesUsed: [{
+            standardLength: { type: mongoose.Types.Decimal128 }, // e.g., 16
+            standardLengthUnit: { type: String }, // e.g., 'ft'
+            cutsMade: [{ // List of the required cuts placed on THIS pipe
+                requiredLength: { type: mongoose.Types.Decimal128 },
+                // Optional: Link back to original OrderItem if needed
+            }],
+            totalCutLengthOnPipe: { type: mongoose.Types.Decimal128 }, // Sum of cutsMade lengths (in usageUnit)
+            scrapLength: { type: mongoose.Types.Decimal128 }, // Standard Pipe Length (converted to usageUnit) - totalCutLengthOnPipe
+            calculatedWeight: { type: mongoose.Types.Decimal128 }, // Optional: Weight of this pipe based on gauge/length
+            // Optional: Rate of the pipe consumed for costing
+            // unitRateSnapshot: { type: mongoose.Types.Decimal128 }
+        }],
+        // Summary for this material (matches pipe-order-summary endpoint structure)
+        totalPipesPerLength: [{ length: Number, unit: String, quantity: Number, totalScrap: mongoose.Types.Decimal128 }],
+        totalWeight: { type: mongoose.Types.Decimal128 },
+    }],
+}, { timestamps: true });
+module.exports = mongoose.model('CuttingPlan', cuttingPlanSchema);
+Use code with caution.
+JavaScript
+Frontend Structure: /dashboard/manufacturing/*. Need components to display the detailed CuttingPlan (visualizer) and the pipe-order-summary. Buttons to trigger optimization and commit cuts.
+Key Validations: Cutting optimization algorithm robustness and accuracy (critical!). Correct unit conversions (ft to inches etc.). Accurate inventory deduction (StockTransaction must use correct length, lengthUnit, quantityChange: -1). Weight calculation based on gauge and length.
+
+Module 10: Accounting & Invoicing
+
+Key Features: Generate invoices from orders, record payments against invoices, basic sales ledger, simple P&L (requires clear definition).
+
+Backend Endpoints:
+
+POST /api/invoices/from-order/{orderId}: Create an invoice from a completed/delivered order.
+
+GET /api/invoices: List invoices.
+
+GET /api/invoices/{invoiceId}: Get invoice details.
+
+GET /api/invoices/{invoiceId}/pdf: Generate invoice PDF.
+
+POST /api/invoices/{invoiceId}/payments: Record a payment against an invoice.
+
+GET /api/accounting/sales-ledger: Get sales ledger data (list of invoices and payments).
+
+GET /api/accounting/pnl-simple: Get simplified P&L data (needs defined calculation).
+
+MongoDB Schema:
+
+// models/Invoice.js
+const mongoose = require('mongoose');
+const invoiceSchema = new mongoose.Schema({
+    companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true, index: true },
+    invoiceIdDisplay: { type: String, required: true, unique: true }, // e.g., INV-2024-001
+    orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true, index: true },
+    orderIdDisplaySnapshot: String,
+    clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
+    clientSnapshot: { /* ... copied from Order ... */ },
+    status: { type: String, enum: ['Draft', 'Sent', 'Partially Paid', 'Paid', 'Overdue', 'Void'], default: 'Draft' },
+    // Invoice details are based on the FINAL state of the Order
+    items: [{ /* ... snapshot of final items from Order ... */
+        finalItemSubtotal: { type: mongoose.Types.Decimal128 },
+    }],
+    charges: [/* ... snapshot of final charges from Order ... */],
+    discount: { /* ... snapshot of final discount from Order ... */ },
+    subtotal: { type: mongoose.Types.Decimal128 }, // Final from Order
+    totalCharges: { type: mongoose.Types.Decimal128 }, // Final from Order
+    totalTax: { type: mongoose.Types.Decimal128 }, // Final from Order
+    grandTotal: { type: mongoose.Types.Decimal128 }, // Final from Order - Amount Due
+    // Payment Tracking
+    amountPaid: { type: mongoose.Types.Decimal128, default: '0.00' },
+    balanceDue: { type: mongoose.Types.Decimal128 }, // grandTotal - amountPaid
+    payments: [{
+        paymentDate: { type: Date, required: true },
+        amount: { type: mongoose.Types.Decimal128, required: true },
+        method: String, // e.g., 'Bank Transfer', 'Cash', 'Razorpay'
+        reference: String,
+        recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        recordedAt: { type: Date, default: Date.now }
+    }],
+    // Metadata
+    invoiceDate: { type: Date, default: Date.now },
+    dueDate: Date,
+    termsAndConditions: String, // Copied from Order/Settings
+    notes: String,
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // User who generated invoice
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
+}, { timestamps: true });
+
+// Calculate balanceDue before saving
+invoiceSchema.pre('save', function(next) {
+  this.balanceDue = (this.grandTotal || mongoose.Types.Decimal128.fromString('0.00')).subtract(this.amountPaid || mongoose.Types.Decimal128.fromString('0.00'));
+  // Update status based on payment
+  if (this.balanceDue.toString() === '0.00' && this.grandTotal.toString() !== '0.00') {
+      this.status = 'Paid';
+  } else if (this.amountPaid.toString() !== '0.00' && this.balanceDue.greaterThan(mongoose.Types.Decimal128.fromString('0.00'))) {
+      this.status = 'Partially Paid';
+  } // Add logic for Overdue status based on dueDate
+  next();
+});
+
+// Auto-incrementing display ID logic
+module.exports = mongoose.model('Invoice', invoiceSchema);
+IGNORE_WHEN_COPYING_START
+content_copy
+download
+Use code with caution.
+JavaScript
+IGNORE_WHEN_COPYING_END
+
+Frontend Structure:
+
+/dashboard/invoices: Invoice listing page (<InvoiceTable>, filters by status).
+
+/dashboard/invoices/[invoiceId]: View invoice details (<InvoiceDetailView>, <PaymentHistory>).
+
+/dashboard/invoices/[invoiceId]/pdf: Invoice PDF preview/download.
+
+/dashboard/invoices/[invoiceId]/record-payment: Modal to record payment (<PaymentForm>).
+
+/dashboard/accounting/sales-ledger: Sales ledger view page.
+
+/dashboard/accounting/pnl: Simple P&L report page.
+
+Components: InvoiceTable, InvoiceDetailView, PaymentForm, PaymentHistory.
+
+Key Validations/Rules:
+
+Invoices should typically be generated from Orders in a specific status (e.g., 'Delivered', 'Completed').
+
+Invoice data should be a snapshot of the final order details.
+
+Payment amounts should not exceed the balanceDue.
+
+balanceDue and status updates must be accurate.
+
+P&L calculation needs a precise definition (e.g., Sum(Invoice GrandTotal) - Sum(Order Material Costs) over a period). Material costs might need to be snapshotted in the Order based on inventory rates at the time.
+
+Generate unique, sequential invoiceIdDisplay.
+
+Module 11: Subscription & Billing
+
+Key Features: Define plans, Razorpay integration (checkout, recurring), update company status via webhooks.
+
+Backend Endpoints:
+
+GET /api/subscriptions/plans: List available subscription plans.
+
+POST /api/subscriptions/checkout: Initiate Razorpay checkout for a plan.
+
+GET /api/subscriptions/status: Get current company's subscription status.
+
+POST /api/subscriptions/webhooks/razorpay: Handle incoming webhooks from Razorpay (payment success, failure, subscription updates).
+
+POST /api/subscriptions/manage: Redirect user to Razorpay portal to manage subscription (if applicable).
+
+MongoDB Schema:
+
+(Primarily updates Company schema's subscriptionPlan, subscriptionStatus, razorpayCustomerId. May need a SubscriptionPlan collection if plans are complex/dynamic).
+
+// models/SubscriptionPlan.js (Optional, if plans are managed dynamically)
+const mongoose = require('mongoose');
+const subscriptionPlanSchema = new mongoose.Schema({
+    planId: { type: String, required: true, unique: true }, // e.g., 'basic_monthly', 'pro_yearly'
+    name: { type: String, required: true }, // e.g., "Pro Plan"
+    razorpayPlanId: String, // Corresponding ID in Razorpay
+    price: { type: mongoose.Types.Decimal128, required: true },
+    currency: { type: String, default: 'INR' },
+    interval: { type: String, enum: ['month', 'year'] },
+    features: [String], // List of enabled features/limits
+    isActive: { type: Boolean, default: true },
+});
+module.exports = mongoose.model('SubscriptionPlan', subscriptionPlanSchema);
+
+// Add fields to Company schema (as shown in Module 1)
+// companySchema.add({
+//    subscriptionPlan: { type: mongoose.Schema.Types.ObjectId, ref: 'SubscriptionPlan' }, // Or String if simple
+//    subscriptionStatus: { type: String, enum: ['active', 'inactive', 'trial', 'past_due', 'cancelled'], default: 'trial' },
+//    razorpayCustomerId: String,
+//    razorpaySubscriptionId: String,
+//    trialEndsAt: Date,
+//    currentPeriodEndsAt: Date,
+// });
+IGNORE_WHEN_COPYING_START
+content_copy
+download
+Use code with caution.
+JavaScript
+IGNORE_WHEN_COPYING_END
+
+Frontend Structure:
+
+/dashboard/settings/billing: Billing page showing current plan, status, payment history (via Razorpay API?), upgrade options. (<BillingInfo>, <PlanSelector>)
+
+/subscribe: Public or post-login page to choose and pay for a plan (<PlanSelectionCard>, <RazorpayCheckoutButton>).
+
+Key Validations/Rules:
+
+Securely handle Razorpay API keys and webhook secrets.
+
+Validate incoming webhooks using Razorpay signatures.
+
+Update Company.subscriptionStatus reliably based on webhook events (e.g., subscription.activated, subscription.charged, subscription.halted, subscription.cancelled).
+
+Implement middleware or checks to restrict feature access based on Company.subscriptionPlan and subscriptionStatus.
+
+Module 12: Reporting (REVISED)
+Key Features: Reports for Clients, Quotations, Sales Orders, Inventory (by standard length), Manufacturing (optimization efficiency, scrap rates).
+Backend Endpoints: /api/reports/*
+/api/reports/inventory: Data needs to aggregate stockByLength. Include valuation per length/total. Low stock report per length.
+/api/reports/manufacturing: Analyze CuttingPlan data - average scrap percentage per material, pipes used vs estimated, time per stage.
+(Other reports as detailed previously)
+MongoDB Schema: Relies on aggregation of existing collections.
+Frontend Structure: /dashboard/reports/*. Inventory and Manufacturing report views need updating for new data structures.
+Key Validations: Clear metrics definition. Efficient aggregation queries. Indexing strategy. Multi-tenant isolation. Date range filters.
+
+
+MongoDB Schema:
+
+(No new schemas. Relies on querying and aggregating data from existing collections using MongoDB aggregation pipeline.)
+
+Frontend Structure:
+
+/dashboard/reports: Reporting dashboard linking to specific reports.
+
+/dashboard/reports/clients: Client report page (<ClientReportView>, charts, tables).
+
+/dashboard/reports/quotations: Quotation report page (<QuotationReportView>).
+
+/dashboard/reports/sales-orders: Sales order report page (<SalesReportView>).
+
+/dashboard/reports/inventory: Inventory report page (<InventoryReportView>).
+
+/dashboard/reports/manufacturing: Manufacturing report page (<ManufacturingReportView>).
+
+Components: Reusable charting components (<BarChart>, <PieChart>, <LineChart>), data tables with export options.
+
+Key Validations/Rules:
+
+Define clear metrics for each report.
+
+Use MongoDB aggregation framework efficiently for complex queries.
+
+Consider performance implications for reports querying large datasets. Implement indexing strategically.
+
+Ensure reports respect multi-tenant data isolation (companyId).
+
+Implement date range filters and other relevant filters for all reports.
+
+6. Suggested Project Folder Structure (Monorepo - Optional but Recommended)
+aluminium-app/
+├── apps/
+│   ├── backend/             # Node.js/Express API
+│   │   ├── src/
+│   │   │   ├── config/      # Environment vars, DB connection, constants
+│   │   │   ├── controllers/ # Request handling logic (per module)
+│   │   │   ├── middleware/  # Auth, RBAC, error handling, multi-tenancy
+│   │   │   ├── models/      # Mongoose schemas (per module)
+│   │   │   ├── routes/      # API route definitions (per module)
+│   │   │   ├── services/    # Business logic, external API integrations (Razorpay, PDF, SVG)
+│   │   │   ├── utils/       # Helpers, validators, formula engine
+│   │   │   └── server.js    # Entry point
+│   │   ├── tests/         # Unit/Integration tests
+│   │   ├── .env.example
+│   │   ├── Dockerfile
+│   │   └── package.json
+│   └── frontend/            # Next.js Web App
+│       ├── src/
+│       │   ├── app/         # Next.js App Router structure (folders match routes)
+│       │   │   ├── (auth)/    # Routes without main layout (login, register)
+│       │   │   ├── (dashboard)/ # Routes with main layout
+│       │   │   │   ├── dashboard/ # Main dashboard page
+│       │   │   │   ├── clients/
+│       │   │   │   ├── quotations/
+│       │   │   │   ├── orders/
+│       │   │   │   ├── inventory/
+│       │   │   │   ├── products/
+│       │   │   │   ├── manufacturing/
+│       │   │   │   ├── estimations/
+│       │   │   │   ├── invoices/
+│       │   │   │   ├── reports/
+│       │   │   │   ├── settings/
+│       │   │   │   └── layout.js # Main authenticated layout
+│       │   │   └── layout.js    # Root layout
+│       │   │   └── page.js      # Landing page?
+│       │   ├── components/  # Reusable UI components (atoms, molecules, organisms)
+│       │   │   ├── ui/        # Generic UI (Button, Input, Card - often from Shadcn/UI)
+│       │   │   ├── modules/   # Module-specific complex components (QuotationForm, OrderTable)
+│       │   │   └── common/    # Layout parts (Sidebar, Navbar)
+│       │   ├── contexts/    # React Contexts (Auth, Settings)
+│       │   ├── hooks/       # Custom React Hooks
+│       │   ├── lib/         # Client-side helpers, API client, utils
+│       │   ├── styles/      # Global CSS, Tailwind config
+│       │   └── types/       # TypeScript interfaces/types
+│       ├── public/        # Static assets
+│       ├── .env.local.example
+│       ├── next.config.js
+│       ├── Dockerfile
+│       └── package.json
+├── packages/                # Optional: Shared code (e.g., types, validation schemas)
+│   └── types/
+│       └── index.ts
+├── docker-compose.yml       # For local development (App + DB)
+├── .gitignore
+└── README.md
+IGNORE_WHEN_COPYING_START
+content_copy
+download
+Use code with caution.
+IGNORE_WHEN_COPYING_END
+
+7. Development Phasing / Sprints (REVISED Emphasis)
+Phase 0: Foundation (Sprint 1-2) - Setup, Auth, Basic Company/User management.
+Phase 1: Core Config & Data (Sprint 3-5) - Settings, Revised Inventory (Stock by Length, Gauges), Clients.
+Phase 2: Formula Engine & Basic Order Calc (Sprint 6-8) - Product Types (Formulas for Cut Lengths), Estimation Tool (Raw Length), Order generation (Aggregating requiredMaterialCuts). High Risk: Formula Logic.
+Phase 3: Quoting Workflow (Sprint 9-10) - Quotation Management (Area based pricing, PDF).
+Phase 4: Cutting Optimization Engine (Sprint 11-14) - NEW: Develop/Integrate the core bin-packing algorithm. Backend logic for optimize-cuts, CuttingPlan schema finalization. Highest Risk & Complexity. Requires significant testing.
+Phase 5: Manufacturing Integration & Inventory Deduction (Sprint 15-16) - Integrate Optimization into UI (CuttingPlan display, SVG, Summary), Implement commit-cuts logic, accurate StockTransaction generation.
+Phase 6: Financials & Billing (Sprint 17-18) - Invoicing, Payments, Subscription management (Razorpay).
+Phase 7: Reporting & Polish (Sprint 19-20+) - Revised Inventory/Manufacturing reports, other reports, UX polish, performance tuning, E2E Testing. Launch MVP.
+Ongoing: Bug fixing, performance monitoring, feedback implementation.
+
+8. Core Challenges & Complexity Risks (REVISED)
+Cutting Optimization Algorithm: (HIGH RISK) Implementing/selecting an efficient and accurate bin-packing algorithm that handles multiple available stock lengths to minimize scrap is the most significant technical challenge. Requires specific expertise or thorough library evaluation and potentially R&D. Performance is a key consideration.
+Inventory Management Complexity: (HIGH RISK) Tracking stock per standard length adds significant complexity throughout the inventory lifecycle (receiving, adjustments, reporting, and especially deduction via commit-cuts). Requires rigorous testing.
+Unit Consistency: Critical to handle conversions correctly between formula units (e.g., inches), standard pipe units (e.g., feet), and weight units (e.g., kg/ft ) during calculations, optimization, and reporting.
+Formula Engine: Ensuring the formula parser (W, H variables) accurately calculates the intended cut lengths remains crucial.
+Data Flow Accuracy: The chain from Order (requiredMaterialCuts) -> Inventory (stockByLength) -> Optimization (CuttingPlan) -> Inventory Deduction (StockTransaction) must be flawless.
+Multi-Tenancy: Strict data isolation remains paramount.
+State Management (Frontend): Complex forms (Product, Order, Cutting Plan UI) require robust state management.
+PDF & SVG Generation: Generating potentially complex cutting plan visualizations and accurate documents requires care.
+
+9. Library/Tool Recommendations (REVISED)
+UI Framework: Next.js, Tailwind CSS, Shadcn/UI, React Hook Form (as before)
+PDF Generation: Puppeteer (recommended for layout control), pdf-lib (performance).
+SVG Rendering: React JSX (frontend), D3.js / Puppeteer (backend/PDF).
+Cutting Optimization Algorithm: (Research Required)
+Search npm: bin packing multiple lengths, cutting stock variable lengths, 1d bin packing ffd. Evaluate libraries like bin-packer or others carefully.
+Consider custom implementation of algorithms like First Fit Decreasing (FFD) or Best Fit Decreasing (BFD), adapted for multiple stock bin sizes. This may require algorithmic expertise. Allocate R&D time.
+Authentication: NextAuth.js (Recommended), Passport.js, Lucia Auth.
+Payment Processing: Razorpay Node.js SDK, Razorpay React Checkout.
+Formula Parsing: mathjs (Recommended), expr-eval.
+Database ORM: Mongoose (as specified).
+State Management (Frontend): Zustand, Redux Toolkit, React Context.
+Charting: Recharts, Chart.js (w/ wrapper), Nivo.
+
+This detailed breakdown should provide a solid foundation for architecting and building the application. Remember to prioritize features for an MVP based on the phasing suggestions. Good luck!

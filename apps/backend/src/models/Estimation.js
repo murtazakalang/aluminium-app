@@ -1,0 +1,403 @@
+const mongoose = require('mongoose');
+const { Decimal } = require('decimal.js'); // Import Decimal.js
+
+const estimationSchema = new mongoose.Schema({
+    companyId: { 
+        type: mongoose.Schema.Types.ObjectId, 
+        ref: 'Company', 
+        required: true, 
+        index: true 
+    },
+    clientId: { 
+        type: mongoose.Schema.Types.ObjectId, 
+        ref: 'Client', 
+        required: false 
+    },
+    projectName: { 
+        type: String, 
+        required: true 
+    },
+    dimensionUnitUsed: { 
+        type: String, 
+        enum: ['inches', 'mm', 'ft', 'm'], 
+        default: 'inches' 
+    },
+    items: [{
+        productTypeId: { 
+            type: mongoose.Schema.Types.ObjectId, 
+            ref: 'ProductType', 
+            required: true 
+        },
+        productTypeNameSnapshot: String,
+        width: { 
+            type: mongoose.Types.Decimal128, 
+            required: true, 
+            min: 0 
+        },
+        height: { 
+            type: mongoose.Types.Decimal128, 
+            required: true, 
+            min: 0 
+        },
+        quantity: { 
+            type: Number, 
+            default: 1, 
+            min: 1 
+        },
+        itemLabel: {
+            type: String 
+        },
+        
+        // NEW: Glass type selection per item
+        selectedGlassTypeId: { 
+            type: mongoose.Schema.Types.ObjectId, 
+            ref: 'MaterialV2' // References Glass category material
+        },
+        selectedGlassTypeNameSnapshot: String,
+        
+        // NEW: Calculated glass details for this item
+        calculatedGlassQuantity: { 
+            type: mongoose.Types.Decimal128 
+        },
+        calculatedGlassUnit: { 
+            type: String, 
+            enum: ['sqft', 'sqm'] 
+        },
+        calculatedGlassCost: { 
+            type: mongoose.Types.Decimal128 
+        }
+    }],
+    calculatedMaterials: [{
+        materialId: { 
+            type: mongoose.Schema.Types.ObjectId, 
+            ref: 'MaterialV2', 
+            required: true 
+        },
+        materialNameSnapshot: { 
+            type: String, 
+            required: true 
+        },
+        materialCategorySnapshot: { 
+            type: String, 
+            required: true,
+        },
+        totalQuantity: { 
+            type: mongoose.Types.Decimal128, 
+            required: true,
+            default: mongoose.Types.Decimal128.fromString('0.00') 
+        },
+        quantityUnit: { 
+            type: String, 
+            required: true,
+        },
+        totalWeight: {
+            type: mongoose.Types.Decimal128,
+            default: mongoose.Types.Decimal128.fromString('0.000')
+        },
+        weightUnit: {
+            type: String,
+            default: 'kg'
+        },
+        autoUnitRate: {
+            type: mongoose.Types.Decimal128,
+            default: mongoose.Types.Decimal128.fromString('0.00')
+        },
+        autoRateUnit: {
+            type: String,
+            default: 'pcs'
+        },
+        manualUnitRate: { 
+            type: mongoose.Types.Decimal128, 
+            default: mongoose.Types.Decimal128.fromString('0.00') 
+        },
+        manualRateUnit: {
+            type: String,
+            default: ''
+        },
+        calculatedCost: { 
+            type: mongoose.Types.Decimal128, 
+            default: mongoose.Types.Decimal128.fromString('0.00') 
+        },
+        pipeBreakdown: [{
+            length: { type: mongoose.Types.Decimal128, required: true },
+            unit: { type: String, required: true },
+            count: { type: Number, required: true, min: 1 }
+        }],
+        
+        // NEW: Source tracking for glass materials
+        sourceType: { 
+            type: String, 
+            enum: ['profile', 'hardware', 'glass'], 
+            default: 'profile' 
+        },
+        sourceItemIds: [{ 
+            type: mongoose.Schema.Types.ObjectId 
+        }] // References estimation.items that contributed to this material
+    }],
+    manualCharges: [{
+        description: { 
+            type: String, 
+            required: true 
+        },
+        amount: { 
+            type: mongoose.Types.Decimal128, 
+            required: true, 
+            default: mongoose.Types.Decimal128.fromString('0.00') 
+        },
+        // Labour cost metadata
+        isLabourCharge: {
+            type: Boolean,
+            default: false
+        },
+        labourCostType: {
+            type: String,
+            enum: ['fixed', 'perSqft', 'perSqm', 'percentage'],
+            required: false
+        },
+        labourRate: {
+            type: mongoose.Types.Decimal128,
+            required: false
+        },
+        productTypeId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'ProductType',
+            required: false
+        },
+        calculatedArea: {
+            type: mongoose.Types.Decimal128,
+            required: false
+        },
+        itemQuantity: {
+            type: Number,
+            required: false
+        },
+        autoGenerated: {
+            type: Boolean,
+            default: false
+        },
+        manuallyModified: {
+            type: Boolean,
+            default: false
+        }
+    }],
+    subtotalMaterials: { 
+        type: mongoose.Types.Decimal128, 
+        default: mongoose.Types.Decimal128.fromString('0.00') 
+    },
+    subtotalManualCharges: { 
+        type: mongoose.Types.Decimal128, 
+        default: mongoose.Types.Decimal128.fromString('0.00') 
+    },
+    totalEstimatedCost: { 
+        type: mongoose.Types.Decimal128, 
+        default: mongoose.Types.Decimal128.fromString('0.00') 
+    },
+    markupPercentage: { 
+        type: mongoose.Types.Decimal128, 
+        default: mongoose.Types.Decimal128.fromString('0.00') 
+    },
+    markedUpTotal: { 
+        type: mongoose.Types.Decimal128, 
+        default: mongoose.Types.Decimal128.fromString('0.00') 
+    },
+    status: { 
+        type: String, 
+        enum: ['Draft', 'Calculated', 'Converted', 'Archived'], 
+        default: 'Draft' 
+    },
+    notes: String,
+    createdBy: { 
+        type: mongoose.Schema.Types.ObjectId, 
+        ref: 'User', 
+        required: true 
+    },
+    createdAt: { 
+        type: Date, 
+        default: Date.now 
+    },
+    updatedAt: { 
+        type: Date, 
+        default: Date.now 
+    }
+}, { timestamps: true });
+
+// Pre-save hook to calculate subtotals and total
+estimationSchema.pre('save', function(next) {
+    // Helper to convert a value to a Decimal.js instance
+    const toDecimalJS = (value, precision = 2) => {
+        if (value instanceof Decimal) {
+            return value;
+        }
+        if (value === null || value === undefined || String(value).trim() === '') {
+            return new Decimal(0);
+        }
+        try {
+            // If it's a BSON Decimal128, convert its string representation
+            if (value instanceof mongoose.Types.Decimal128) {
+                return new Decimal(value.toString());
+            }
+            // For numbers, convert to string with fixed decimal places to avoid precision issues
+            if (typeof value === 'number') {
+                if (!isFinite(value)) return new Decimal(0);
+                return new Decimal(value.toFixed(precision));
+            }
+            // For strings or other types, attempt direct conversion
+            let stringValue = String(value).trim();
+            if (!/^-?\d*(\.\d+)?$/.test(stringValue)) {
+                return new Decimal(0); // Default if not a valid number string
+            }
+            return new Decimal(stringValue);
+        } catch (error) {
+            return new Decimal(0);
+        }
+    };
+
+    // 1. Ensure calculatedMaterials and manualCharges are arrays
+    this.calculatedMaterials = this.calculatedMaterials || [];
+    this.manualCharges = this.manualCharges || [];
+
+    // 2. Calculate calculatedCost for each material item using Decimal.js
+    this.calculatedMaterials.forEach(material => {
+        const quantity = toDecimalJS(material.totalQuantity); // For profiles, this is # of pipes
+        const materialName = material.materialNameSnapshot || material.materialId;
+        const isProfile = material.materialCategorySnapshot === 'Profile';
+
+        let rateToUse = toDecimalJS(material.manualUnitRate);
+        let unitForRate = material.manualRateUnit; // User-defined unit for manual rate takes precedence
+        let rateSource = 'manual';
+
+        // Check stockUnit from multiple sources
+        let determinedStockUnit = material.stockUnit || material.autoRateUnit;
+        if (!determinedStockUnit && isProfile) {
+            determinedStockUnit = 'kg'; // Default for profiles
+        }
+
+        if (!rateToUse.isZero()) {
+            // Manual rate is set and non-zero. Determine its unit.
+            if (!unitForRate) { // If manualRateUnit is not explicitly set by user
+                if (isProfile) {
+                    // For profiles, infer manual rate unit from stockUnit (typically 'kg')
+                    unitForRate = determinedStockUnit || 'kg';
+                } else {
+                    // For non-profiles, infer from purchaseUnit or usageUnit
+                    unitForRate = material.autoRateUnit || 'pcs'; // fallback to autoRateUnit or 'pcs'
+                }
+            }
+            unitForRate = unitForRate.toLowerCase(); // normalize to lowercase
+        } else {
+            // Manual rate is zero or not set. Use auto rate.
+            rateToUse = toDecimalJS(material.autoUnitRate);
+            unitForRate = (material.autoRateUnit || 'pcs').toLowerCase(); // use autoRateUnit, normalized
+            rateSource = 'auto';
+        }
+
+        // Determine the quantity to use for costing based on unitForRate
+        let finalQuantityForCosting;
+        let costingBasisDescription;
+
+        // Check if unitForRate is a weight unit (e.g., 'kg', 'lb', 'gram', etc.)
+        const isWeightUnit = ['kg', 'kilogram', 'kilograms', 'lb', 'pound', 'pounds', 'gram', 'grams', 'g'].includes(unitForRate);
+        // Check if unitForRate is a length unit (e.g., 'ft', 'feet', 'meter', 'meters', etc.)
+        const isLengthUnit = ['ft', 'feet', 'foot', 'meter', 'meters', 'm', 'inch', 'inches', 'in'].includes(unitForRate);
+
+        if (isWeightUnit) {
+            // Rate is per weight unit, use totalWeight
+            finalQuantityForCosting = toDecimalJS(material.totalWeight);
+            costingBasisDescription = 'totalWeight';
+        } else if (isProfile && isLengthUnit && material.pipeBreakdown && Array.isArray(material.pipeBreakdown)) {
+            // Rate is per length unit for profiles, calculate total length from pipeBreakdown
+            let totalLengthFromBreakdown = 0;
+            material.pipeBreakdown.forEach(pipe => {
+                const pipeLength = parseFloat(pipe.length.toString()); // Convert Decimal128 to number
+                const pipeCount = pipe.count || 1;
+                totalLengthFromBreakdown += pipeLength * pipeCount;
+            });
+            finalQuantityForCosting = toDecimalJS(totalLengthFromBreakdown.toString());
+            costingBasisDescription = 'totalLength (from pipeBreakdown)';
+        } else {
+            // Rate is per piece/quantity unit, use totalQuantity
+            finalQuantityForCosting = quantity; // This is material.totalQuantity
+            costingBasisDescription = 'totalQuantity (e.g., pipes, pcs, area)';
+        }
+
+        // Calculate final cost
+        const finalCost = rateToUse.mul(finalQuantityForCosting);
+        material.calculatedCost = mongoose.Types.Decimal128.fromString(finalCost.toFixed(2));
+    });
+
+    // 3. Calculate subtotal for materials using Decimal.js
+    let subtotalMaterialsJS = new Decimal(0);
+    this.calculatedMaterials.forEach(item => {
+        subtotalMaterialsJS = subtotalMaterialsJS.plus(toDecimalJS(item.calculatedCost));
+    });
+    this.subtotalMaterials = subtotalMaterialsJS.toFixed(2); // Store as string
+
+    // 4. Calculate subtotal for manual charges using Decimal.js
+    let subtotalManualChargesJS = new Decimal(0);
+    this.manualCharges.forEach(item => {
+        subtotalManualChargesJS = subtotalManualChargesJS.plus(toDecimalJS(item.amount));
+    });
+    this.subtotalManualCharges = subtotalManualChargesJS.toFixed(2); // Store as string
+
+    // 5. Calculate total estimated cost using Decimal.js
+    const totalEstimatedCostJS = subtotalMaterialsJS.plus(subtotalManualChargesJS);
+    this.totalEstimatedCost = totalEstimatedCostJS.toFixed(2); // Store as string
+
+    // 6. Apply markup using Decimal.js
+    const markupPercentageJS = toDecimalJS(this.markupPercentage);
+    const oneHundredJS = new Decimal(100);
+    const oneJS = new Decimal(1);
+    
+    let markupFactorJS = oneJS;
+    if (!oneHundredJS.isZero()) { // Avoid division by zero
+      markupFactorJS = oneJS.plus(markupPercentageJS.div(oneHundredJS));
+    }
+    
+    const markedUpTotalJS = totalEstimatedCostJS.times(markupFactorJS);
+    this.markedUpTotal = markedUpTotalJS.toFixed(2); // Store as string
+
+    // Convert all final monetary fields back to strings for Mongoose to handle as Decimal128
+    // Mongoose will convert these strings to Decimal128 on save
+    this.markupPercentage = toDecimalJS(this.markupPercentage).toFixed(2);
+
+    // Update the 'updatedAt' timestamp
+    this.updatedAt = new Date();
+
+    next();
+});
+
+// Helper function to transform Decimal128 to string for an object
+const transformDecimalToString = (obj) => {
+    for (const key in obj) {
+        if (obj[key] instanceof mongoose.Types.Decimal128) {
+            obj[key] = obj[key].toString();
+        } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+            transformDecimalToString(obj[key]); // Recurse for nested objects
+        }
+    }
+};
+
+// Apply toJSON transform to convert Decimal128 to string
+estimationSchema.set('toJSON', {
+    transform: function (doc, ret, options) {
+        // Transform top-level Decimal128 fields
+        transformDecimalToString(ret);
+
+        // Specifically transform Decimal128 fields in nested arrays
+        if (ret.items && Array.isArray(ret.items)) {
+            ret.items.forEach(item => transformDecimalToString(item));
+        }
+        if (ret.calculatedMaterials && Array.isArray(ret.calculatedMaterials)) {
+            ret.calculatedMaterials.forEach(material => transformDecimalToString(material));
+        }
+        if (ret.manualCharges && Array.isArray(ret.manualCharges)) {
+            ret.manualCharges.forEach(charge => transformDecimalToString(charge));
+        }
+        
+        // You can also remove version keys or other fields if desired
+        // delete ret.__v;
+        return ret;
+    }
+});
+
+module.exports = mongoose.model('Estimation', estimationSchema); 

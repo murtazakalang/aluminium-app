@@ -1,0 +1,166 @@
+/**
+ * SVG Generation Service
+ * Generates technical drawings in SVG format using AI
+ */
+
+const OpenAI = require('openai');
+
+// Initialize OpenAI client only if API key is available
+let openai = null;
+if (process.env.OPENAI_API_KEY) {
+  openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+}
+
+/**
+ * Generate SVG technical drawing using AI
+ * @param {string} prompt - User prompt describing the desired SVG
+ * @param {Object} productContext - Additional context about the product
+ * @returns {Promise<string>} - Generated SVG content
+ */
+async function generateSVG(prompt, productContext = {}) {
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      console.warn('[SVG Generation] OpenAI API key not configured, using fallback SVG');
+      return generateFallbackSVG(productContext);
+    }
+
+    // Enhanced prompt with technical drawing specifications
+    const enhancedPrompt = `
+Create a clean, technical SVG drawing based on this description: "${prompt}"
+
+Product Context:
+- Product Name: ${productContext.name || 'N/A'}
+- Description: ${productContext.description || 'N/A'}
+
+Requirements:
+1. Create a precise technical drawing in SVG format
+2. Use clean lines with stroke-width="2" and stroke="black"
+3. Fill should be "none" or very light colors
+4. Include dimension lines and labels where appropriate
+5. Use a viewBox that fits the drawing (e.g., "0 0 400 300")
+6. Include basic measurements and annotations
+7. Style should be professional and technical
+8. Only return the SVG XML content, no explanations
+
+The SVG should be suitable for inclusion in professional quotation documents.
+Focus on clarity, precision, and technical accuracy.
+
+Return only the SVG code starting with <svg> and ending with </svg>.
+`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4-turbo-preview",
+      messages: [
+        {
+          role: "system",
+          content: "You are a technical drawing expert. Create precise SVG technical drawings for architectural and construction products. Focus on clarity, accuracy, and professional presentation."
+        },
+        {
+          role: "user",
+          content: enhancedPrompt
+        }
+      ],
+      max_tokens: 2000,
+      temperature: 0.3, // Lower temperature for more consistent technical drawings
+    });
+
+    let svgContent = response.choices[0]?.message?.content?.trim();
+    
+    if (!svgContent) {
+      console.warn('[SVG Generation] No content from OpenAI, using fallback');
+      return generateFallbackSVG(productContext);
+    }
+
+    // Clean up the response to ensure it's valid SVG
+    svgContent = cleanSVGContent(svgContent);
+    
+    // Validate SVG content
+    validateSVGContent(svgContent);
+    
+    return svgContent;
+    
+  } catch (error) {
+    console.warn('AI SVG generation failed, using fallback:', error.message);
+    return generateFallbackSVG(productContext);
+  }
+}
+
+/**
+ * Clean SVG content to ensure it's valid
+ * @param {string} svgContent - Raw SVG content from AI
+ * @returns {string} - Cleaned SVG content
+ */
+function cleanSVGContent(svgContent) {
+  // Remove any markdown code blocks
+  svgContent = svgContent.replace(/```[^`]*```/g, '');
+  svgContent = svgContent.replace(/```/g, '');
+  
+  // Extract SVG content between <svg> and </svg> tags
+  const svgMatch = svgContent.match(/<svg[^>]*>[\s\S]*<\/svg>/i);
+  if (svgMatch) {
+    svgContent = svgMatch[0];
+  }
+  
+  // Ensure proper XML declaration (optional but good practice)
+  if (!svgContent.includes('xmlns')) {
+    svgContent = svgContent.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+  }
+  
+  return svgContent.trim();
+}
+
+/**
+ * Validate SVG content for basic structure
+ * @param {string} svgContent - SVG content to validate
+ * @throws {Error} - If SVG is invalid
+ */
+function validateSVGContent(svgContent) {
+  if (!svgContent.includes('<svg')) {
+    throw new Error('Invalid SVG: No opening <svg> tag found');
+  }
+  
+  if (!svgContent.includes('</svg>')) {
+    throw new Error('Invalid SVG: No closing </svg> tag found');
+  }
+  
+  // Basic structure validation
+  const openTags = (svgContent.match(/<[^/][^>]*>/g) || []).length;
+  const closeTags = (svgContent.match(/<\/[^>]*>/g) || []).length;
+  
+  // Allow some tolerance for self-closing tags
+  if (Math.abs(openTags - closeTags) > openTags * 0.3) {
+    console.warn('SVG structure warning: Potential tag mismatch');
+  }
+}
+
+/**
+ * Generate a fallback SVG for when AI generation fails
+ * @param {Object} productContext - Product information
+ * @returns {string} - Simple fallback SVG
+ */
+function generateFallbackSVG(productContext = {}) {
+  const productName = productContext.name || 'Product';
+  
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200" width="300" height="200">
+    <rect x="20" y="40" width="260" height="120" fill="none" stroke="black" stroke-width="2"/>
+    <text x="150" y="110" text-anchor="middle" font-family="Arial" font-size="14" fill="black">
+      ${productName}
+    </text>
+    <text x="150" y="130" text-anchor="middle" font-family="Arial" font-size="10" fill="gray">
+      Technical Drawing
+    </text>
+    <line x1="30" y1="170" x2="80" y2="170" stroke="black" stroke-width="1"/>
+    <text x="55" y="185" text-anchor="middle" font-family="Arial" font-size="8" fill="black">
+      Dimensions as specified
+    </text>
+  </svg>`;
+}
+
+module.exports = {
+  generateSVG,
+  generateFallbackSVG,
+  cleanSVGContent,
+  validateSVGContent
+}; 
