@@ -38,3 +38,7 @@ yarn-error.log*
 *.pem
 
 .cursor/rules
+
+# Configuration files (environment-specific)
+docker-compose.yml
+apps/frontend/next.config.js
