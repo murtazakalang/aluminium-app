@@ -1,8 +1,7 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   reactStrictMode: true,
-  output: 'standalone',
+  output: 'standalone', // Enable standalone output
   
   // Disable Next.js branding and development overlays
   devIndicators: {
@@ -11,6 +10,9 @@ const nextConfig: NextConfig = {
   },
   
   // Disable telemetry
+  telemetry: false,
+  
+  // Disable the development overlay completely
   experimental: {
     forceSwcTransforms: true,
   },
@@ -19,12 +21,14 @@ const nextConfig: NextConfig = {
   webpack: (config, { dev, isServer }) => {
     if (dev && !isServer) {
       // Remove Next.js development indicators
-      config.plugins = config.plugins.filter((plugin: any) => {
+      config.plugins = config.plugins.filter((plugin) => {
         return plugin.constructor.name !== 'ReactRefreshWebpackPlugin'
       })
     }
     return config
   },
+  
+  // Add other configurations here if needed
 };
 
-export default nextConfig;
+module.exports = nextConfig; 

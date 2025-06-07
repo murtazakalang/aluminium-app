@@ -120,3 +120,36 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Hide Next.js development overlays and branding */
+nextjs-portal,
+#__next-dev-client-overlay__,
+#__next-build-watcher,
+[data-nextjs-dev-overlay],
+[data-nextjs-dev-overlay] *,
+iframe[src*="__next_dev_client"],
+iframe[src*="next/static/chunks/webpack"],
+.nextjs-container-build-error,
+.nextjs-container-errors-header,
+.nextjs-container-errors,
+.__next-error-overlay,
+.__next-build-error,
+.__next-dev-overlay-error-message {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  position: absolute !important;
+  left: -9999px !important;
+  top: -9999px !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Hide any elements containing Next.js logos */
+[alt*="Next.js"],
+[src*="next.svg"],
+[href*="nextjs.org"],
+img[src*="/next.svg"],
+img[alt*="Next.js"] {
+  display: none !important;
+}
