@@ -6,7 +6,7 @@ node_modules
 .pnp.js
 
 # Local env files
-.env
+apps/backend/.env
 .env.local
 .env.development.local
 .env.test.local
@@ -41,4 +41,3 @@ yarn-error.log*
 
 # Configuration files (environment-specific)
 docker-compose.yml
-apps/frontend/next.config.js
