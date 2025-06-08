@@ -92,8 +92,8 @@ timeout 1800 docker build \
         
         echo "❌ Build still failing. Trying yarn instead of npm..."
         
-        # Create a Dockerfile that uses yarn
-        cat > apps/frontend/Dockerfile.yarn << 'EOF'
+                 # Create a Dockerfile that uses yarn
+         cat > apps/frontend/Dockerfile.yarn << 'EOF'
 FROM node:18-alpine AS builder
 
 RUN apk add --no-cache libc6-compat
@@ -104,6 +104,7 @@ WORKDIR /usr/src/app
 
 COPY package*.json ./
 COPY apps/frontend/package*.json ./apps/frontend/
+COPY packages/ ./packages/
 
 RUN yarn install --frozen-lockfile --network-timeout 600000
 

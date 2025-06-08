@@ -15,8 +15,8 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 COPY apps/frontend/package*.json ./apps/frontend/
 
-# Copy packages if they exist
-COPY packages/types/package*.json ./packages/types/ 2>/dev/null || true
+# Copy packages directory structure
+COPY packages/ ./packages/
 
 # Clean npm cache and install dependencies with optimizations
 RUN npm cache clean --force && \
@@ -35,7 +35,7 @@ WORKDIR /usr/src/app
 # Copy package files
 COPY package*.json ./
 COPY apps/frontend/package*.json ./apps/frontend/
-COPY packages/types/package*.json ./packages/types/ 2>/dev/null || true
+COPY packages/ ./packages/
 
 # Install dependencies with timeout and retries
 RUN npm cache clean --force && \
@@ -45,7 +45,6 @@ RUN npm cache clean --force && \
 
 # Copy source code
 COPY apps/frontend/ ./apps/frontend/
-COPY packages/ ./packages/ 2>/dev/null || true
 
 # Build with memory optimization
 WORKDIR /usr/src/app/apps/frontend
