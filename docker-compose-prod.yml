@@ -2,7 +2,7 @@ services:
   backend:
     build:
       context: .
-      dockerfile: ./apps/backend/Dockerfile
+      dockerfile: ./apps/backend/Dockerfile.optimized
       target: production
     container_name: aluminium-backend-prod
     ports:
