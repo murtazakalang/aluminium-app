@@ -1,0 +1,85 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: ./apps/backend/Dockerfile
+      target: production
+    container_name: aluminium-backend-prod
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - MONGO_URI=mongodb+srv://murtazakalang:happylife@cluster0.olbow0k.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
+      - PORT=3001
+      - FRONTEND_URL=http://34.47.207.4:3000
+      - PUPPETEER_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-accelerated-2d-canvas,--no-first-run,--no-zygote,--disable-gpu
+    depends_on:
+      - mongo
+    networks:
+      - aluminium-network
+    restart: unless-stopped
+    # Resource optimization
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+  frontend:
+    build:
+      context: .
+      dockerfile: ./apps/frontend/Dockerfile
+      target: runner
+    container_name: aluminium-frontend-prod
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://34.47.207.4/api
+      - NEXT_TELEMETRY_DISABLED=1
+    depends_on:
+      - backend
+    networks:
+      - aluminium-network
+    restart: unless-stopped
+    # Resource optimization
+    deploy:
+      resources:
+        limits:
+          cpus: '0.7'
+          memory: 1.5G
+        reservations:
+          cpus: '0.3'
+          memory: 512M
+
+  mongo:
+    image: mongo:latest
+    container_name: aluminium-mongo-prod
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data-prod:/data/db
+    networks:
+      - aluminium-network
+    restart: unless-stopped
+    # MongoDB optimization
+    command: mongod --wiredTigerCacheSizeGB 1.5 --journal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 2G
+        reservations:
+          cpus: '0.2'
+          memory: 1G
+
+networks:
+  aluminium-network:
+    driver: bridge
+
+volumes:
+  mongo-data-prod:
+    driver: local
