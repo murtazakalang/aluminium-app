@@ -41,3 +41,6 @@ yarn-error.log*
 
 # Configuration files (environment-specific)
 docker-compose.yml
+
+# Ignore uploaded logos
+apps/backend/uploads/**
