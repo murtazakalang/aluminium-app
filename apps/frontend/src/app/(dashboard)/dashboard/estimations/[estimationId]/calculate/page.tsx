@@ -16,7 +16,7 @@ import { toast } from 'sonner';
 // Helper for safe parsing and calculation, can be moved to a util file
 const safeParseFloat = (value: any, defaultValue = 0): number => {
   if (value === null || value === undefined) return defaultValue;
-  let numValue = parseFloat(typeof value === 'object' && value.$numberDecimal !== undefined ? value.$numberDecimal : value.toString());
+  const numValue = parseFloat(typeof value === 'object' && value.$numberDecimal !== undefined ? value.$numberDecimal : value.toString());
   return isNaN(numValue) ? defaultValue : numValue;
 };
 

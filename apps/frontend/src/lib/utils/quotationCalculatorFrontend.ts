@@ -39,7 +39,7 @@ export function calculateItemDetailsFrontend(
 
   let widthInTargetDimUnit = inputWidth;
   let heightInTargetDimUnit = inputHeight;
-  let rawAreaInDimUnits = inputWidth * inputHeight;
+  const rawAreaInDimUnits = inputWidth * inputHeight;
 
   let convertedArea = 0;
   let roundedArea = 0;
