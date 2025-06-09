@@ -43,13 +43,7 @@ const calculateCosts = (materials: CalculatedMaterial[], manualCharges: ManualCh
   };
 };
 
-interface PageProps {
-  params: {
-    estimationId: string;
-  };
-}
-
-export default function CalculateEstimationPage({ params }: PageProps) {
+export default function CalculateEstimationPage({ params }: { params: { estimationId: string } }) {
   const router = useRouter();
   const { estimationId } = params;
   

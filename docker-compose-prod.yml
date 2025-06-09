@@ -31,7 +31,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: ./apps/frontend/Dockerfile.optimized
+      dockerfile: ./apps/frontend/Dockerfile.final
       target: runner
     container_name: aluminium-frontend-prod
     ports:
