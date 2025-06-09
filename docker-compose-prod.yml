@@ -2,84 +2,64 @@ services:
   backend:
     build:
       context: .
-      dockerfile: ./apps/backend/Dockerfile.optimized
-      target: production
-    container_name: aluminium-backend-prod
+      dockerfile: ./apps/backend/Dockerfile
+      target: development
+    container_name: aluminium-backend
     ports:
       - "3001:3001"
+    volumes:
+      - ./apps/backend:/usr/src/app/apps/backend
+      # Don't mount node_modules from host
+      - /usr/src/app/apps/backend/node_modules
+      # Root node_modules should be preserved too
+      - /usr/src/app/node_modules
     environment:
-      - NODE_ENV=production
-      - MONGO_URI=mongodb+srv://murtazakalang:happylife@cluster0.olbow0k.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
+      - NODE_ENV=development
+      - MONGO_URI=mongodb+srv://murtazakalang:happylife@cluster0.olbow0k.mongodb.net/?retryWrites=true&w=majori>
       - PORT=3001
-      - FRONTEND_URL=http://34.47.207.4:3000
-      - PUPPETEER_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-accelerated-2d-canvas,--no-first-run,--no-zygote,--disable-gpu
+      - FRONTEND_URL=http://34.93.98.116:3000
     depends_on:
       - mongo
     networks:
       - aluminium-network
-    restart: unless-stopped
-    # Resource optimization
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 2G
-        reservations:
-          cpus: '0.5'
-          memory: 1G
 
   frontend:
     build:
       context: .
-      dockerfile: ./apps/frontend/Dockerfile.final
-      target: runner
-    container_name: aluminium-frontend-prod
+      dockerfile: ./apps/frontend/Dockerfile
+      target: development
+    container_name: aluminium-frontend
     ports:
       - "3000:3000"
+    volumes:
+      - ./apps/frontend:/usr/src/app/apps/frontend
+      # Don't mount node_modules from host
+      - /usr/src/app/apps/frontend/node_modules
+      - /usr/src/app/node_modules
+      - /usr/src/app/apps/frontend/.next
     environment:
-      - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://34.47.207.4/api
-      - NEXT_TELEMETRY_DISABLED=1
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://34.93.98.116/api
     depends_on:
       - backend
     networks:
       - aluminium-network
-    restart: unless-stopped
-    # Resource optimization
-    deploy:
-      resources:
-        limits:
-          cpus: '0.7'
-          memory: 1.5G
-        reservations:
-          cpus: '0.3'
-          memory: 512M
+    # command: npm run dev -w frontend # Let Dockerfile's CMD handle this
 
   mongo:
     image: mongo:latest
-    container_name: aluminium-mongo-prod
+    container_name: aluminium-mongo
     ports:
       - "27017:27017"
     volumes:
-      - mongo-data-prod:/data/db
+      - mongo-data:/data/db
     networks:
       - aluminium-network
-    restart: unless-stopped
-    # MongoDB optimization
-    command: mongod --wiredTigerCacheSizeGB 1.5 --journal
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 2G
-        reservations:
-          cpus: '0.2'
-          memory: 1G
 
 networks:
   aluminium-network:
     driver: bridge
 
 volumes:
-  mongo-data-prod:
+  mongo-data:
     driver: local
