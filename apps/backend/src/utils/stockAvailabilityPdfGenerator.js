@@ -14,6 +14,7 @@ const generateStockAvailabilityPDF = async (orderData, stockAvailability, glassR
     
     try {
         browser = await puppeteer.launch({
+            executablePath: '/usr/bin/chromium-browser',
             headless: 'new',
             args: [
                 '--no-sandbox',

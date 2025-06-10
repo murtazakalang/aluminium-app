@@ -19,7 +19,7 @@ async function generateCuttingPlanPDF({ cuttingPlan, order, company, svgOutput }
     console.log('[cuttingPlanPdfGenerator] Launching Puppeteer...');
     browser = await puppeteer.launch({
       headless: true,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      executablePath: '/usr/bin/chromium-browser',
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',

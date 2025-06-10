@@ -24,7 +24,19 @@ FROM node:18-alpine AS development
 RUN apk add --no-cache libc6-compat
 
 # Explicitly set development mode
-ENV NODE_ENV=development 
+ENV NODE_ENV=development
+
+# Prevent Puppeteer from downloading Chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+
+# Install Chromium and dependencies for Puppeteer
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont
 
 # Set working directory at monorepo root
 WORKDIR /usr/src/app

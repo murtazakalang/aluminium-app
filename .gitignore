@@ -44,3 +44,5 @@ docker-compose.yml
 
 # Ignore uploaded logos
 apps/backend/uploads/**
+frontend-build.zip
+*.zip

@@ -342,6 +342,7 @@ module.exports = {
 
             // Launch browser and generate PDF
             const browser = await puppeteer.launch({
+                executablePath: '/usr/bin/chromium-browser',
                 headless: 'new',
                 args: ['--no-sandbox', '--disable-setuid-sandbox'],
                 timeout: 30000 // 30 second timeout
