@@ -39,7 +39,7 @@ services:
       - /usr/src/app/apps/frontend/.next
     environment:
       - NODE_ENV=development
-      - NEXT_PUBLIC_API_URL=http://34.47.207.4/api
+      - NEXT_PUBLIC_API_URL=http://34.47.207.4:3001
     depends_on:
       - backend
     networks:
