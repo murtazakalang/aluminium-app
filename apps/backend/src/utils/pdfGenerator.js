@@ -130,7 +130,7 @@ async function generateQuotationPDF(quotation, company = {}) {
     try {
       browser = await puppeteer.launch({
         headless: true,
-        executablePath: '/usr/bin/chromium-browser',
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -1202,7 +1202,7 @@ async function generateInvoicePDF(invoice, company = {}) {
 
     browser = await puppeteer.launch({
       headless: true,
-      executablePath: '/usr/bin/chromium-browser',
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
