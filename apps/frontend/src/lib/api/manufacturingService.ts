@@ -110,6 +110,12 @@ export const manufacturingApi = {
       method: 'POST',
     }),
 
+  // Commit materials (deduct non-profile materials from inventory)
+  commitMaterials: (orderId: string) =>
+    api<{ data: { order: any; materialsCommitted: number; batchesUsed: number; consumedBatches: any[] }; message: string }>(`/api/manufacturing/orders/${orderId}/commit-materials`, {
+      method: 'POST',
+    }),
+
   // Get orders ready for manufacturing
   getManufacturingQueue: (filters?: { status?: string; search?: string; page?: number; limit?: number }) => {
     const queryParams = new URLSearchParams();

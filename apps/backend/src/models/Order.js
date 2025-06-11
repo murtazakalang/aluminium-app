@@ -99,7 +99,7 @@ const aggregatedMaterialDetailSchema = new mongoose.Schema({
 
 const orderSchema = new mongoose.Schema({
     companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true, index: true },
-    orderIdDisplay: { type: String, required: true, unique: true }, // e.g., SO-2024-001
+    orderIdDisplay: { type: String, required: true }, // e.g., SO-2024-001
     quotationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Quotation', required: true, index: true },
     quotationIdDisplaySnapshot: String,
     clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
@@ -138,6 +138,10 @@ const orderSchema = new mongoose.Schema({
     finalGrandTotal: { type: mongoose.Types.Decimal128 },
     cuttingPlanId: { type: mongoose.Schema.Types.ObjectId, ref: 'CuttingPlan', index: true },
     cuttingPlanStatus: { type: String, enum: ['Pending', 'Generated', 'Committed', 'Failed'], default: 'Pending' },
+    
+    // Material commitment tracking (for non-profile materials)
+    materialsCommitted: { type: Boolean, default: false },
+    materialsCommittedAt: { type: Date },
     measurementConfirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     measurementConfirmedAt: Date,
     history: [{
@@ -212,6 +216,13 @@ const orderSchema = new mongoose.Schema({
         }
     }
 });
+
+// Indexes for efficient queries and ensure orderIdDisplay is unique per company
+orderSchema.index({ companyId: 1, status: 1 });
+orderSchema.index({ companyId: 1, clientId: 1 });
+orderSchema.index({ companyId: 1, createdAt: -1 });
+// Compound unique index: orderIdDisplay should be unique per company
+orderSchema.index({ companyId: 1, orderIdDisplay: 1 }, { unique: true });
 
 // TODO: Add pre-save hook for calculations if needed
 // TODO: Add logic for generating unique orderIdDisplay (e.g., using a counter collection)

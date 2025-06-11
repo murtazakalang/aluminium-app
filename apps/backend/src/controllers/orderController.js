@@ -15,9 +15,17 @@ const backgroundOptimizationInProgress = new Set();
 
 // Utility function to generate unique orderIdDisplay (placeholder)
 async function generateOrderIdDisplay(companyId) {
-    // In a real app, this would involve a counter collection or a more robust mechanism
-    const count = await Order.countDocuments({ companyId });
-    return `SO-${new Date().getFullYear()}-${(count + 1).toString().padStart(3, '0')}`;
+    const currentYear = new Date().getFullYear();
+    const prefix = `SO-${currentYear}-`;
+    
+    // Count existing orders for this year and company to get the next sequential number
+    const count = await Order.countDocuments({
+        companyId,
+        orderIdDisplay: { $regex: `^${prefix}` }
+    });
+    
+    const nextNumber = count + 1;
+    return `${prefix}${nextNumber.toString().padStart(3, '0')}`;
 }
 
 exports.createOrderFromQuotation = catchAsync(async (req, res, next) => {

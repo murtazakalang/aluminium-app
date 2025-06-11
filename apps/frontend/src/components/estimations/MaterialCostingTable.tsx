@@ -18,11 +18,14 @@ const formatPipeBreakdown = (totalPipes: string, breakdown?: PipeBreakdownItem[]
     const lengthValue = typeof item.length === 'object' && item.length.$numberDecimal 
       ? parseFloat(item.length.$numberDecimal).toFixed(2) 
       : parseFloat(item.length.toString()).toFixed(2);
-    return `${item.count} × ${lengthValue}${item.unit}`;
+    
+    // Use clean format like orders: "12.00 ft (3 pieces)"
+    const countText = item.count === 1 ? 'piece' : 'pieces';
+    return `${lengthValue} ${item.unit} (${item.count} ${countText})`;
   });
 
-  // Format with parentheses around each size group: "4 (2 × 15.00ft)(2 × 12.00ft)"
-  return `${parseFloat(totalPipes).toFixed(0)} (${breakdownItems.map(item => item).join(")(")})`;
+  // Join with commas like orders: "12 ft (3 pieces), 15 ft (7 pieces), 16 ft (7 pieces)"
+  return breakdownItems.join(', ');
 };
 
 // Utility function to format weight with unit

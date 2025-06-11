@@ -91,16 +91,11 @@ class EstimationService {
             
             if (materialV2) {
                 // Convert V2 material to V1-like structure for backward compatibility
-                // IMPORTANT: Copy ALL fields needed for profile cutting optimization
+                // For glass materials, use piece-based rate or unitRateForStockUnit
+                const rateToUse = materialV2.unitRateForStockUnit || materialV2.aggregatedTotals?.averageRatePerPiece || '0';
+                const stockUnitToUse = materialV2.stockUnit || 'sqft';
                 
-                // For profiles, use weight-based rate; for others, use piece-based rate
-                const isProfile = materialV2.category === 'Profile';
-                const rateToUse = isProfile 
-                    ? materialV2.aggregatedTotals?.averageRatePerKg || '0'
-                    : materialV2.aggregatedTotals?.averageRatePerPiece || '0';
-                const stockUnitToUse = isProfile ? 'kg' : materialV2.stockUnit;
-                
-                return {
+                glassMaterial = {
                     _id: materialV2._id,
                     name: materialV2.name,
                     category: materialV2.category,
@@ -111,24 +106,10 @@ class EstimationService {
                     brand: materialV2.brand,
                     isActive: true, // V2 only contains active materials
                     isV2: true, // Flag to identify V2 materials
-                    companyId: materialV2.companyId, // Needed for cutting util validation
-                    
-                    // CRITICAL: Copy profile-specific fields for cutting optimization
-                    standardLengths: materialV2.standardLengths || [], // Standard pipe lengths
-                    gaugeSpecificWeights: materialV2.referenceGaugeWeights?.map(refGauge => ({
-                        gauge: refGauge.gauge,
-                        weightPerUnitLength: refGauge.referenceWeight, // Map referenceWeight to weightPerUnitLength
-                        unitLength: refGauge.unitLength
-                    })) || [], // Map referenceGaugeWeights to gaugeSpecificWeights
-                    weightUnit: materialV2.weightUnit || 'kg', // Default weight unit
-                    defaultGauge: materialV2.defaultGauge || null, // Default gauge if any
-                    
-                    // Additional fields that might be needed
-                    purchaseUnit: stockUnitToUse, // Use determined stock unit as purchase unit
-                    unitRate: rateToUse // Use the same rate as unitRateForStockUnit
+                    companyId: materialV2.companyId
                 };
             } else {
-                // Fall back to V1 system
+                // Fall back to V1 system (though V1 is deprecated)
                 glassMaterial = await MaterialV2.findOne({ 
                     _id: item.selectedGlassTypeId, 
                     companyId: companyId,
@@ -972,6 +953,7 @@ This enables automatic width optimization and reduces material waste.`);
 
         // --- GLASS CALCULATION ---
         // Process glass calculations for all items
+        console.log(`[EstimationService] Starting glass calculation for estimation ${estimationId}`);
         const glassCalculations = [];
         for (const item of estimation.items) {
             const productType = await ProductType.findOne({ 
@@ -983,6 +965,8 @@ This enables automatic width optimization and reduces material waste.`);
                 continue;
             }
 
+            console.log(`[EstimationService] Processing glass for item ${item._id}, selectedGlassTypeId: ${item.selectedGlassTypeId}, productType: ${productType.name}`);
+
             // Calculate glass for this item
             const glassCalc = await EstimationService.calculateGlassForItem(
                 item, 
@@ -990,6 +974,13 @@ This enables automatic width optimization and reduces material waste.`);
                 estimation.dimensionUnitUsed, 
                 companyId
             );
+
+            console.log(`[EstimationService] Glass calculation result:`, {
+                hasGlass: glassCalc.hasGlass,
+                error: glassCalc.error,
+                glassMaterial: glassCalc.glassMaterial ? glassCalc.glassMaterial.name : 'null',
+                glassQuantity: glassCalc.glassQuantityPerItem
+            });
 
             // Add item reference for source tracking
             glassCalc.itemId = item._id;
@@ -1010,11 +1001,13 @@ This enables automatic width optimization and reduces material waste.`);
 
         // Aggregate glass materials and add to calculatedMaterials
         const aggregatedGlassMap = EstimationService.aggregateGlassMaterials(glassCalculations);
+        console.log(`[EstimationService] Aggregated glass materials:`, Object.keys(aggregatedGlassMap).length);
         
         // Add glass materials to calculatedMaterialsMap
         for (const glassMaterial of Object.values(aggregatedGlassMap)) {
             const glassMatIdString = glassMaterial.materialId.toString();
             calculatedMaterialsMap[glassMatIdString] = glassMaterial;
+            console.log(`[EstimationService] Added glass material to calculatedMaterialsMap: ${glassMaterial.materialNameSnapshot}`);
         }
 
         estimation.calculatedMaterials = Object.values(calculatedMaterialsMap);

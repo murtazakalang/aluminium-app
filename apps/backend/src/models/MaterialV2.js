@@ -204,13 +204,19 @@ materialV2Schema.methods.updateAggregatedTotals = function() {
             
             valueToAdd = currentQty * ratePerPiece;
         } else if (this.category === 'Wire Mesh') {
-            // For Wire Mesh, use area-based calculations
-            if (batch.totalArea && batch.ratePerArea) {
+            // For Wire Mesh, check stockUnit to determine what to track
+            if (this.stockUnit === 'rolls' || this.stockUnit === 'pcs') {
+                // Track by number of rolls/pieces
+                stockToAdd = currentQty;
+                ratePerPiece = parseFloat(batch.ratePerUnit.toString());
+                valueToAdd = currentQty * ratePerPiece;
+            } else if (batch.totalArea && batch.ratePerArea) {
+                // Track by area (sqft, sqm, etc.)
                 const currentArea = parseFloat(batch.totalArea.toString());
                 const ratePerArea = parseFloat(batch.ratePerArea.toString());
                 
-                stockToAdd = currentArea; // Use total area instead of quantity
-                ratePerPiece = ratePerArea; // Use rate per area
+                stockToAdd = currentArea;
+                ratePerPiece = ratePerArea;
                 valueToAdd = currentArea * ratePerArea;
             } else {
                 // Fallback to quantity-based if area data is missing
@@ -336,8 +342,15 @@ materialV2Schema.methods.getStockSummary = function() {
         
         for (const batch of activeBatches) {
             if (this.category === 'Wire Mesh') {
-                // For Wire Mesh, use area-based calculations
-                if (batch.totalArea && batch.ratePerArea) {
+                // For Wire Mesh, check stockUnit to determine what to track
+                if (this.stockUnit === 'rolls' || this.stockUnit === 'pcs') {
+                    // Track by number of rolls/pieces
+                    const qty = parseFloat(batch.currentQuantity.toString());
+                    const rate = parseFloat(batch.ratePerUnit.toString());
+                    totalQty += qty;
+                    totalValue += (qty * rate);
+                } else if (batch.totalArea && batch.ratePerArea) {
+                    // Track by area (sqft, sqm, etc.)
                     const currentArea = parseFloat(batch.totalArea.toString());
                     const ratePerArea = parseFloat(batch.ratePerArea.toString());
                     totalQty += currentArea;

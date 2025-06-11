@@ -21,6 +21,7 @@ export function ManufacturingView({ orderId, order, onRefresh }: ManufacturingVi
   const [error, setError] = useState<string | null>(null);
   const [optimizationLoading, setOptimizationLoading] = useState(false);
   const [commitLoading, setCommitLoading] = useState(false);
+  const [commitMaterialsLoading, setCommitMaterialsLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [lastFetchedOrderId, setLastFetchedOrderId] = useState<string | null>(null);
 
@@ -96,8 +97,33 @@ export function ManufacturingView({ orderId, order, onRefresh }: ManufacturingVi
     }
   };
 
+  const handleCommitMaterials = async () => {
+    if (!orderId) return;
+    
+    setCommitMaterialsLoading(true);
+    setError(null);
+    setSuccessMessage(null);
+    
+    try {
+      const response = await manufacturingApi.commitMaterials(orderId);
+      const { materialsCommitted, batchesUsed } = response.data;
+      setSuccessMessage(`Materials committed successfully! ${materialsCommitted} materials removed from ${batchesUsed} batches.`);
+      onRefresh(); // Refresh the parent order data
+    } catch (err: any) {
+      const message = err.message || 'Failed to commit materials to inventory';
+      setError(message);
+    } finally {
+      setCommitMaterialsLoading(false);
+    }
+  };
+
   const isPlanGenerationAllowed = ['Ready for Optimization', 'Optimization Complete'].includes(order.status);
   const isCommitAllowed = cuttingPlan && order.cuttingPlanStatus !== 'Committed';
+  
+  // Check if order has non-profile materials and they haven't been committed yet
+  const hasNonProfileMaterials = order.aggregatedOrderMaterials && 
+    order.aggregatedOrderMaterials.some((material: any) => material.materialCategory !== 'Profile');
+  const isMaterialCommitAllowed = hasNonProfileMaterials && !order.materialsCommitted;
 
   // Add safety check
   const hasCuttingPlan = cuttingPlan && typeof cuttingPlan === 'object' && cuttingPlan._id;
@@ -128,6 +154,16 @@ export function ManufacturingView({ orderId, order, onRefresh }: ManufacturingVi
                 {commitLoading ? 'Committing...' : 'Commit Cuts to Inventory'}
               </Button>
             )}
+
+            {isMaterialCommitAllowed && (
+              <Button
+                onClick={handleCommitMaterials}
+                disabled={commitMaterialsLoading}
+                className="bg-orange-600 hover:bg-orange-700 text-white"
+              >
+                {commitMaterialsLoading ? 'Committing...' : 'Commit Materials to Inventory'}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -146,13 +182,23 @@ export function ManufacturingView({ orderId, order, onRefresh }: ManufacturingVi
         <div className="grid grid-cols-1 gap-4">
           <div>
             <h3 className="text-lg font-semibold mb-2">Current Status</h3>
-            <div className="flex space-x-4">
+            <div className="flex space-x-4 flex-wrap">
               <div className="bg-gray-100 p-2 rounded">
                 <span className="font-medium">Order Status:</span> {order.status}
               </div>
               <div className="bg-gray-100 p-2 rounded">
                 <span className="font-medium">Cutting Plan:</span> {order.cuttingPlanStatus}
               </div>
+              {hasNonProfileMaterials && (
+                <div className={`p-2 rounded ${order.materialsCommitted ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                  <span className="font-medium">Materials:</span> {order.materialsCommitted ? 'Committed' : 'Pending'}
+                  {order.materialsCommittedAt && (
+                    <div className="text-xs text-gray-600 mt-1">
+                      Committed: {new Date(order.materialsCommittedAt).toLocaleDateString()}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

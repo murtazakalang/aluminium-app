@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const invoiceSchema = new mongoose.Schema({
     companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true, index: true },
-    invoiceIdDisplay: { type: String, required: true, unique: true }, // e.g., INV-2024-001
+    invoiceIdDisplay: { type: String, required: true }, // e.g., INV-2024-001
     orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true, index: true },
     orderIdDisplaySnapshot: String,
     clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
@@ -102,6 +102,12 @@ const invoiceSchema = new mongoose.Schema({
         }
     }
 });
+
+// Compound unique index to ensure invoiceIdDisplay is unique per company
+invoiceSchema.index({ companyId: 1, invoiceIdDisplay: 1 }, { unique: true });
+
+// Prevent auto-indexing on invoiceIdDisplay field to avoid recreating global unique index
+invoiceSchema.path('invoiceIdDisplay').index(false);
 
 // Calculate balanceDue and update status before saving
 invoiceSchema.pre('save', function(next) {

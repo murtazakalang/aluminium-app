@@ -263,6 +263,48 @@ router.post('/orders/:orderId/commit-cuts', rbac(['Admin', 'Manager']), manufact
 
 /**
  * @openapi
+ * /api/manufacturing/orders/{orderId}/commit-materials:
+ *   post:
+ *     summary: Commits non-profile materials (hardware, glass, wire mesh, etc.) from order to inventory.
+ *     tags: [Manufacturing]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The ID of the order for which to commit materials.
+ *     responses:
+ *       200:
+ *         description: Materials committed to inventory successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 order:
+ *                   $ref: '#/components/schemas/Order'
+ *                 materialsCommitted:
+ *                   type: number
+ *                 batchesUsed:
+ *                   type: number
+ *       400:
+ *         description: Bad request (e.g., no materials found or already committed).
+ *       401:
+ *         description: Unauthorized.
+ *       404:
+ *         description: Order not found.
+ *       500:
+ *         description: Server error during commit.
+ */
+router.post('/orders/:orderId/commit-materials', rbac(['Admin', 'Manager']), manufacturingController.commitMaterialsForOrder);
+
+/**
+ * @openapi
  * /api/manufacturing/queue:
  *   get:
  *     summary: Retrieves the manufacturing queue with optional filters

@@ -23,12 +23,24 @@ interface GlassRequirement {
   totalGlassPieces: number;
 }
 
-const formatStockDetails = (details: StockItemDetail[]): string => {
+const formatStockDetails = (details: StockItemDetail[], materialCategory?: string): string => {
   if (!details || details.length === 0) return 'No details available';
   
-  return details.map(detail => 
-    `Batch ${detail.batchId}: ${detail.stockLength}ft (${detail.remaining}ft remaining)`
-  ).join(', ');
+  return details.map(detail => {
+    // For profiles, always show count (even for 1 piece) to match estimation pattern
+    if (materialCategory === 'Profile') {
+      const countText = detail.count === 1 ? 'piece' : 'pieces';
+      return `${detail.length} ${detail.unit} (${detail.count} ${countText})`;
+    }
+    // For hardware and wire mesh, only show count when > 1
+    else if (detail.count === 1) {
+      // When count is 1, show just "length unit" (e.g., "10 pcs" or "2.5 x 2.33 ft")
+      return `${detail.length} ${detail.unit}`;
+    } else {
+      // When count > 1, show "length unit (count pieces)"
+      return `${detail.length} ${detail.unit} (${detail.count} pieces)`;
+    }
+  }).join(', ');
 };
 
 export const RequiredCutsView: React.FC<RequiredCutsViewProps> = ({
@@ -91,7 +103,7 @@ export const RequiredCutsView: React.FC<RequiredCutsViewProps> = ({
       order.items.forEach((item, index) => {
         if (item.selectedGlassTypeNameSnapshot) {
           // Get glass formula from product type
-          const productType = item.productTypeId as Record<string, unknown>;
+          const productType = item.productTypeId as unknown as Record<string, unknown>;
           const glassFormula = productType?.glassAreaFormula as Record<string, unknown>;
           
           let calculatedWidth = parseFloat(item.finalWidth.toString());
@@ -282,9 +294,9 @@ export const RequiredCutsView: React.FC<RequiredCutsViewProps> = ({
     id: stock.materialId || index.toString(),
     materialName: stock.materialName,
     status: getStockStatusBadge(stock.status),
-    required: formatStockDetails(stock.stockDetails),
-    available: formatStockDetails(stock.stockDetails),
-    shortfall: formatStockDetails(stock.stockDetails),
+    required: formatStockDetails(stock.requiredCutsDetail, stock.category),
+    available: formatStockDetails(stock.availableStockDetail, stock.category),
+    shortfall: formatStockDetails(stock.shortfallDetail, stock.category),
   }));
 
   const stockColumns = [
@@ -462,7 +474,7 @@ export const RequiredCutsView: React.FC<RequiredCutsViewProps> = ({
                 {stockAvailability.filter(stock => 
                   stock.status === 'Sufficient' || 
                   stock.status === 'Sufficient (Simplified Check)' ||
-                  (stock.status === 'More Scrap if Use Xft' && stock.stockDetails.length === 0) // Count "More Scrap" as "in stock" if stock details are empty
+                  (stock.status === 'More Scrap if Use Xft' && stock.shortfallDetail.length === 0) // Count "More Scrap" as "in stock" if no shortfall
                 ).length}
               </div>
               <div className="text-sm text-gray-600">Profile Materials in Stock</div>

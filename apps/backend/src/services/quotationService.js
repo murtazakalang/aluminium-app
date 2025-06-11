@@ -18,18 +18,13 @@ class QuotationService {
         const currentYear = new Date().getFullYear();
         const prefix = `Q-${currentYear}-`;
         
-        // Find the highest quotation number for this year and company
-        const lastQuotation = await Quotation.findOne({
+        // Count existing quotations for this year and company to get the next sequential number
+        const count = await Quotation.countDocuments({
             companyId,
             quotationIdDisplay: { $regex: `^${prefix}` }
-        }).sort({ quotationIdDisplay: -1 });
+        });
         
-        let nextNumber = 1;
-        if (lastQuotation) {
-            const lastNumber = parseInt(lastQuotation.quotationIdDisplay.split('-')[2]);
-            nextNumber = lastNumber + 1;
-        }
-        
+        const nextNumber = count + 1;
         return `${prefix}${nextNumber.toString().padStart(3, '0')}`;
     }
     

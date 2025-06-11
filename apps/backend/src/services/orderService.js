@@ -1038,8 +1038,10 @@ class OrderService {
                 if (category === 'Wire Mesh' && aggMatRequirement.wireMeshItems && aggMatRequirement.wireMeshItems.length > 0) {
                     console.log(`[Wire Mesh Debug Stock Check] Wire mesh has ${aggMatRequirement.wireMeshItems.length} individual items`);
                     
-                    // Display each optimized wire mesh item separately
-                    requiredDisplay = aggMatRequirement.wireMeshItems.map(item => {
+                    // Group wire mesh items by width and sum lengths for same widths
+                    const groupedByWidth = {};
+                    
+                    aggMatRequirement.wireMeshItems.forEach(item => {
                         if (item.optimization) {
                             console.log(`[Wire Mesh Debug Stock Check] Using optimization data: ${JSON.stringify(item.optimization)}`);
                             
@@ -1077,18 +1079,23 @@ class OrderService {
                             let displayLength = actualLength;
                             
                             if (item.unit === 'inches' && displayUnit === 'ft') {
-                                displayWidth = (selectedWidth / 12).toFixed(2);
-                                displayLength = (actualLength / 12).toFixed(2);
-                            } else {
-                                displayWidth = selectedWidth.toFixed(2);
-                                displayLength = actualLength.toFixed(2);
+                                displayWidth = (selectedWidth / 12);
+                                displayLength = (actualLength / 12);
                             }
                             
-                            return { 
-                                length: `${displayWidth} x ${displayLength}`,
-                                count: item.quantity, 
-                                unit: displayUnit 
-                            };
+                            // Group by width and sum lengths
+                            const widthKey = displayWidth.toFixed(1);
+                            if (!groupedByWidth[widthKey]) {
+                                groupedByWidth[widthKey] = {
+                                    width: displayWidth,
+                                    totalLength: 0,
+                                    totalQuantity: 0,
+                                    unit: displayUnit
+                                };
+                            }
+                            groupedByWidth[widthKey].totalLength += displayLength * item.quantity;
+                            groupedByWidth[widthKey].totalQuantity += item.quantity;
+                            
                         } else {
                             // Fallback if no optimization data
                             console.log(`[Wire Mesh Debug Stock Check] No optimization data, using dimensions: ${item.width} x ${item.height} ${item.unit}`);
@@ -1098,20 +1105,31 @@ class OrderService {
                             let displayHeight = item.height;
                             
                             if (item.unit === 'inches' && displayUnit === 'ft') {
-                                displayWidth = (item.width / 12).toFixed(2);
-                                displayHeight = (item.height / 12).toFixed(2);
-                            } else {
-                                displayWidth = displayWidth.toFixed(2);
-                                displayHeight = displayHeight.toFixed(2);
+                                displayWidth = (item.width / 12);
+                                displayHeight = (item.height / 12);
                             }
                             
-                            return { 
-                                length: `${displayWidth} x ${displayHeight}`,
-                                count: item.quantity, 
-                                unit: displayUnit 
-                            };
+                            // Group by width and sum lengths
+                            const widthKey = displayWidth.toFixed(1);
+                            if (!groupedByWidth[widthKey]) {
+                                groupedByWidth[widthKey] = {
+                                    width: displayWidth,
+                                    totalLength: 0,
+                                    totalQuantity: 0,
+                                    unit: displayUnit
+                                };
+                            }
+                            groupedByWidth[widthKey].totalLength += displayHeight * item.quantity;
+                            groupedByWidth[widthKey].totalQuantity += item.quantity;
                         }
                     });
+                    
+                    // Convert grouped data to display format
+                    requiredDisplay = Object.values(groupedByWidth).map(group => ({
+                        length: `${group.width.toFixed(1)} x ${group.totalLength.toFixed(2)}`,
+                        count: 1, // Always 1 since we're showing consolidated length
+                        unit: group.unit 
+                    }));
                     
                     console.log(`[Wire Mesh Debug Stock Check] Individual wire mesh items display: ${JSON.stringify(requiredDisplay)}`);
                     
@@ -1281,10 +1299,12 @@ class OrderService {
                             displayUnit = 'ft';
                         }
                         
-                        const rollAvailableLength = (stockToUse / (displayRollWidth || 1)).toFixed(0);
+                        // For wire mesh, show available area instead of trying to calculate length
+                        // Display as "width x available_area" where available_area represents total area available
+                        const availableArea = stockToUse;
                         
                         availableDisplay = [{ 
-                            length: `${displayRollWidth} x ${rollAvailableLength}`,
+                            length: `${displayRollWidth} width (${availableArea.toFixed(1)} sqft total)`,
                             count: 1, 
                             unit: displayUnit 
                         }];
@@ -1302,19 +1322,53 @@ class OrderService {
                 
                 // Calculate shortfall for wire mesh
                 if (shortfallQty > 0) {
-                    if (category === 'Wire Mesh' && requiredDisplay && requiredDisplay.length > 0) {
-                        // Use the required dimensions format for shortfall
-                        const reqDisplayItem = requiredDisplay[0];
-                        if (reqDisplayItem) {
+                    if (category === 'Wire Mesh' && aggMatRequirement.wireMeshItems && aggMatRequirement.wireMeshItems.length > 0) {
+                        // For wire mesh, analyze which specific widths are missing
+                        const missingWidths = new Set();
+                        let totalMissingArea = 0;
+                        
+                        // Check each required wire mesh item against available stock
+                        for (const item of aggMatRequirement.wireMeshItems) {
+                            const requiredWidth = item.optimization?.selectedWidth || item.width;
+                            
+                            // Check if we have stock in this width
+                            let hasStockInWidth = false;
+                            if (materialDoc.simpleBatches && materialDoc.simpleBatches.length > 0) {
+                                for (const batch of materialDoc.simpleBatches) {
+                                    if (batch.isActive && !batch.isCompleted && batch.selectedWidth) {
+                                        const batchWidth = parseFloat(batch.selectedWidth.toString());
+                                        if (Math.abs(batchWidth - requiredWidth) < 0.01) {
+                                            const batchArea = parseFloat(batch.totalArea.toString());
+                                            const requiredArea = requiredWidth * (item.optimization?.actualLength || item.height) * item.quantity;
+                                            if (batchArea >= requiredArea) {
+                                                hasStockInWidth = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            if (!hasStockInWidth) {
+                                missingWidths.add(requiredWidth);
+                                totalMissingArea += requiredWidth * (item.optimization?.actualLength || item.height) * item.quantity;
+                            }
+                        }
+                        
+                        if (missingWidths.size > 0) {
+                            const missingWidthsArray = Array.from(missingWidths).sort((a, b) => a - b);
+                            const missingWidthsStr = missingWidthsArray.map(w => `${w.toFixed(1)}ft width`).join(', ');
+                            
                             shortfallDisplay = [{ 
-                                length: reqDisplayItem.length,
-                                count: Math.ceil(shortfallQty / availableQty) || 1, // Rough estimate of pieces needed
-                                unit: reqDisplayItem.unit 
+                                length: `${missingWidthsStr} (${totalMissingArea.toFixed(1)} sqft)`,
+                                count: 1,
+                                unit: quantityUnitForDisplay 
                             }];
                         } else {
+                            // Fallback to area shortfall if width analysis fails
                             shortfallDisplay = [{ 
-                                length: shortfallQty.toFixed(2),
-                                count: 1, 
+                                length: `${shortfallQty.toFixed(2)} sqft needed`,
+                                count: 1,
                                 unit: quantityUnitForDisplay 
                             }];
                         }

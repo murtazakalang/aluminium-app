@@ -437,6 +437,16 @@ function generateQuotationHTML(quotation, company) {
     itemsCount: quotation.items?.length || 0
   });
 
+  console.log('[generateQuotationHTML] Full quotation data structure:', {
+    hasQuotationIdDisplay: !!quotation.quotationIdDisplay,
+    hasClientSnapshot: !!quotation.clientSnapshot,
+    clientSnapshotKeys: quotation.clientSnapshot ? Object.keys(quotation.clientSnapshot) : [],
+    hasItems: !!quotation.items,
+    itemsLength: quotation.items?.length || 0,
+    quotationKeys: Object.keys(quotation || {}),
+    quotationType: typeof quotation
+  });
+
   if (!quotation.quotationIdDisplay) {
     console.warn('[generateQuotationHTML] Missing quotationIdDisplay, attempting to use _id or fallback');
     // Try to use _id as fallback or generate a temporary ID

@@ -13,8 +13,7 @@ const quotationSchema = new mongoose.Schema({
     },
     quotationIdDisplay: { 
         type: String, 
-        required: true, 
-        unique: true
+        required: true
     }, // User-friendly ID like Q-2024-001
     clientId: { 
         type: mongoose.Schema.Types.ObjectId, 
@@ -192,7 +191,8 @@ const quotationSchema = new mongoose.Schema({
 quotationSchema.index({ companyId: 1, status: 1 });
 quotationSchema.index({ companyId: 1, clientId: 1 });
 quotationSchema.index({ companyId: 1, createdAt: -1 });
-// quotationSchema.index({ quotationIdDisplay: 1 });
+// Compound unique index: quotationIdDisplay should be unique per company
+quotationSchema.index({ companyId: 1, quotationIdDisplay: 1 }, { unique: true });
 
 // Pre-save hook to calculate totals
 quotationSchema.pre('save', async function(next) {

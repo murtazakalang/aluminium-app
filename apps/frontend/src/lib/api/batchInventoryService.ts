@@ -25,6 +25,9 @@ export interface BatchMaterial {
   activeBatchCount: number;
   hasLowStock: boolean;
   systemType?: 'v2' | 'legacy'; // Indicates if material is from new batch system or legacy system
+  // Profile-specific fields for editing
+  standardLengths?: Array<{ length: string; unit: string }>;
+  referenceGaugeWeights?: Array<{ gauge: string; referenceWeight: string; unitLength: string }>;
 }
 
 export interface StockBatch {

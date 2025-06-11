@@ -783,3 +783,291 @@ const isValidPDFBuffer = (pdfBuffer) => {
            pdfBuffer[2] === 0x44 && // D
            pdfBuffer[3] === 0x46;   // F
 };
+
+/**
+ * @function commitMaterialsForOrder
+ * @description Controller to commit non-profile materials (hardware, glass, wire mesh, accessories, consumables) 
+ * from order to inventory. This involves updating MaterialV2.simpleBatches by reducing quantities 
+ * and creating StockTransaction records.
+ */
+exports.commitMaterialsForOrder = catchAsync(async (req, res, next) => {
+    const { orderId } = req.params;
+    const { companyId, _id: userId } = req.user;
+
+    try {
+        const order = await Order.findOne({ _id: orderId, companyId });
+        if (!order) {
+            return next(new AppError('Order not found.', 404));
+        }
+
+        if (!order.aggregatedOrderMaterials || order.aggregatedOrderMaterials.length === 0) {
+            return next(new AppError('No materials found in this order.', 400));
+        }
+
+        // Check if materials have already been committed
+        if (order.materialsCommitted) {
+            return next(new AppError('Materials for this order have already been committed.', 400));
+        }
+
+        // Filter only non-profile materials
+        const nonProfileMaterials = order.aggregatedOrderMaterials.filter(
+            material => material.materialCategory !== 'Profile'
+        );
+
+        if (nonProfileMaterials.length === 0) {
+            return next(new AppError('No non-profile materials found in this order.', 400));
+        }
+
+        // Pre-validate all stock requirements before starting the commit process
+        const stockValidationErrors = [];
+
+        for (const aggMaterial of nonProfileMaterials) {
+            const materialV2 = await MaterialV2.findOne({ 
+                _id: aggMaterial.materialId, 
+                companyId: companyId 
+            });
+
+            if (!materialV2) {
+                stockValidationErrors.push(`Material ${aggMaterial.materialNameSnapshot} not found.`);
+                continue;
+            }
+
+            // Special validation for Wire Mesh materials with individual width requirements
+            if (materialV2.category === 'Wire Mesh' && aggMaterial.wireMeshItems && aggMaterial.wireMeshItems.length > 0) {
+                console.log(`[Validate Wire Mesh] Checking ${aggMaterial.wireMeshItems.length} individual wire mesh items`);
+                
+                // For wire mesh, validate each individual item can be satisfied
+                for (const item of aggMaterial.wireMeshItems) {
+                    const requiredWidth = item.optimization?.requiredWidth || item.width;
+                    const requiredLength = item.optimization?.requiredLength || item.height;
+                    const quantity = item.quantity || 1;
+                    
+                    console.log(`[Validate Wire Mesh] Checking: ${requiredWidth} x ${requiredLength} ft (qty: ${quantity})`);
+                    
+                    // Check if we have batches with sufficient width and area
+                    let canSatisfyRequirement = false;
+                    let availableOptions = [];
+                    
+                    const availableBatches = materialV2.simpleBatches.filter(b => b.isActive && !b.isCompleted);
+                    
+                    for (const batch of availableBatches) {
+                        // Check if batch has the required width or larger
+                        const batchWidth = batch.selectedWidth ? parseFloat(batch.selectedWidth.toString()) : null;
+                        const batchArea = batch.totalArea ? parseFloat(batch.totalArea.toString()) : 0;
+                        
+                        if (batchWidth && batchWidth >= requiredWidth) {
+                            const requiredArea = requiredWidth * requiredLength * quantity;
+                            availableOptions.push(`${batchWidth}ft width (${batchArea} sqft available)`);
+                            
+                            if (batchArea >= requiredArea) {
+                                canSatisfyRequirement = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (!canSatisfyRequirement) {
+                        const requiredArea = requiredWidth * requiredLength * quantity;
+                        stockValidationErrors.push(
+                            `Insufficient wire mesh stock for ${requiredWidth}x${requiredLength}ft (${requiredArea} sqft needed). Available widths: ${availableOptions.length > 0 ? availableOptions.join(', ') : 'None suitable'}`
+                        );
+                    }
+                }
+            } else {
+                // Standard validation for non-wire-mesh materials
+                let requiredQuantity = parseFloat(aggMaterial.totalQuantity.toString());
+                const availableBatches = materialV2.simpleBatches.filter(b => b.isActive && !b.isCompleted);
+                
+                let totalAvailable = 0;
+                for (const batch of availableBatches) {
+                    totalAvailable += parseFloat(batch.currentQuantity.toString());
+                }
+                
+                console.log(`[Validate Material] ${materialV2.name}: Required ${requiredQuantity} vs Available ${totalAvailable}`)
+
+                if (totalAvailable < requiredQuantity) {
+                    stockValidationErrors.push(
+                        `Insufficient stock for ${aggMaterial.materialNameSnapshot}. Required: ${requiredQuantity} ${aggMaterial.quantityUnit}, Available: ${totalAvailable} ${aggMaterial.quantityUnit}`
+                    );
+                }
+            }
+        }
+
+        if (stockValidationErrors.length > 0) {
+            return next(new AppError(`Stock validation failed:\n${stockValidationErrors.join('\n')}`, 400));
+        }
+
+        // Start committing materials
+        const transactionsToCreate = [];
+        const consumedBatches = [];
+
+        // Import wire mesh optimization service for proper consumption
+        const BatchInventoryService = require('../services/batchInventoryService');
+
+        for (const aggMaterial of nonProfileMaterials) {
+            const materialV2 = await MaterialV2.findOne({ 
+                _id: aggMaterial.materialId, 
+                companyId: companyId 
+            });
+
+            console.log(`[Commit Materials Debug] Processing ${aggMaterial.materialNameSnapshot}: Required ${aggMaterial.totalQuantity} ${aggMaterial.quantityUnit}`);
+
+            // Special handling for Wire Mesh materials with individual items
+            if (materialV2.category === 'Wire Mesh' && aggMaterial.wireMeshItems && aggMaterial.wireMeshItems.length > 0) {
+                console.log(`[Commit Wire Mesh] Processing ${aggMaterial.wireMeshItems.length} individual wire mesh items`);
+                
+                // Process each wire mesh item individually to ensure proper width matching
+                for (const item of aggMaterial.wireMeshItems) {
+                    const requiredWidth = item.optimization?.requiredWidth || item.width;
+                    const requiredLength = item.optimization?.requiredLength || item.height;
+                    const quantity = item.quantity || 1;
+                    
+                    console.log(`[Commit Wire Mesh] Item: ${requiredWidth} x ${requiredLength} ft (qty: ${quantity})`);
+                    
+                    try {
+                        // Use existing wire mesh consumption logic that properly handles width matching
+                        const consumptionResult = await BatchInventoryService.consumeWireMeshStock(aggMaterial.materialId, {
+                            companyId,
+                            requiredWidth: parseFloat(requiredWidth),
+                            requiredLength: parseFloat(requiredLength),
+                            quantity: parseInt(quantity),
+                            consumptionType: 'Order Manufacturing',
+                            sortOrder: 'FIFO',
+                            notes: `Order ${order.orderIdDisplay} - Wire mesh ${requiredWidth}x${requiredLength}ft`,
+                            userId: userId
+                        });
+                        
+                        // Track consumed batches (transactions already created by BatchInventoryService)
+                        consumptionResult.consumedBatches.forEach(batchConsumption => {
+                            consumedBatches.push({
+                                materialName: aggMaterial.materialNameSnapshot,
+                                batchId: batchConsumption.batchId,
+                                quantityConsumed: batchConsumption.areaConsumed,
+                                rate: batchConsumption.ratePerArea,
+                                supplier: batchConsumption.supplier,
+                                purchaseDate: batchConsumption.purchaseDate,
+                                invoiceNumber: batchConsumption.invoiceNumber,
+                                wireMeshDetails: {
+                                    requiredWidth,
+                                    requiredLength,
+                                    selectedWidth: batchConsumption.selectedWidth,
+                                    rollsConsumed: batchConsumption.rollsConsumed
+                                }
+                            });
+                            
+                            // Note: Transactions are already created by BatchInventoryService.consumeWireMeshStock
+                            // No need to create duplicate transactions here
+                        });
+                        
+                        console.log(`[Commit Wire Mesh] ✅ Consumed ${consumptionResult.totalAreaConsumed} sqft for ${requiredWidth}x${requiredLength}ft item (efficiency: ${consumptionResult.averageEfficiency.toFixed(1)}%)`);
+                        
+                    } catch (error) {
+                        console.error(`[Commit Wire Mesh] Failed to consume ${requiredWidth}x${requiredLength}ft:`, error);
+                        throw new Error(`Wire mesh consumption failed for ${requiredWidth}x${requiredLength}ft: ${error.message}`);
+                    }
+                }
+                
+            } else {
+                // Standard processing for non-wire-mesh materials
+                const requiredQuantity = parseFloat(aggMaterial.totalQuantity.toString());
+                const availableBatches = materialV2.simpleBatches
+                    .filter(b => b.isActive && !b.isCompleted)
+                    .sort((a, b) => new Date(a.purchaseDate) - new Date(b.purchaseDate)); // FIFO
+
+                let remainingToConsume = requiredQuantity;
+
+                // Consume from batches using FIFO
+                for (const batch of availableBatches) {
+                    if (remainingToConsume <= 0) break;
+
+                    const available = parseFloat(batch.currentQuantity.toString());
+                    const batchRate = parseFloat(batch.ratePerUnit.toString());
+                    const toConsume = Math.min(remainingToConsume, available);
+
+                    // Update batch quantity
+                    const newQuantity = available - toConsume;
+                    batch.currentQuantity = mongoose.Types.Decimal128.fromString(String(newQuantity));
+
+                    // Mark as completed if fully consumed
+                    if (newQuantity <= 0.001) {
+                        batch.isCompleted = true;
+                    }
+
+                    consumedBatches.push({
+                        materialName: aggMaterial.materialNameSnapshot,
+                        batchId: batch.batchId,
+                        quantityConsumed: toConsume,
+                        rate: batchRate,
+                        supplier: batch.supplier,
+                        purchaseDate: batch.purchaseDate,
+                        invoiceNumber: batch.invoiceNumber
+                    });
+
+                    // Prepare transaction record
+                    transactionsToCreate.push({
+                        companyId,
+                        materialId: aggMaterial.materialId,
+                        batchId: batch.batchId,
+                        type: 'Outward-OrderCut',
+                        quantityChange: mongoose.Types.Decimal128.fromString((-toConsume).toString()),
+                        quantityUnit: aggMaterial.quantityUnit,
+                        unitRateAtTransaction: mongoose.Types.Decimal128.fromString(batchRate.toString()),
+                        totalValueChange: mongoose.Types.Decimal128.fromString((-toConsume * batchRate).toString()),
+                        relatedDocumentType: 'Order',
+                        relatedDocumentId: order._id,
+                        notes: `Material consumption for Order ${order.orderIdDisplay}. Material: ${aggMaterial.materialNameSnapshot}, Quantity: ${toConsume} ${aggMaterial.quantityUnit}, Batch: ${batch.batchId}`,
+                        createdBy: userId,
+                        transactionDate: new Date(),
+                    });
+
+                    console.log(`[Commit Materials Debug] 📦 Consumed ${toConsume} ${aggMaterial.quantityUnit} from batch ${batch.batchId} (Rate: ₹${batchRate}/${aggMaterial.quantityUnit})`);
+
+                    remainingToConsume -= toConsume;
+                }
+
+                // Save material with updated batch quantities
+                await materialV2.save();
+            }
+        }
+
+        // Create all transaction records
+        for (const txnData of transactionsToCreate) {
+            await StockTransaction.create(txnData);
+        }
+
+        // Mark materials as committed in the order
+        order.materialsCommitted = true;
+        order.materialsCommittedAt = new Date();
+        
+        // Add history entry
+        const historyEntry = {
+            status: order.status,
+            notes: `Non-profile materials committed to inventory. Total materials: ${nonProfileMaterials.length}, Total batches used: ${consumedBatches.length}`,
+            updatedBy: userId,
+            timestamp: new Date(),
+        };
+        order.history.push(historyEntry);
+
+        await order.save();
+
+        console.log(`[Commit Materials] ✅ Successfully committed ${nonProfileMaterials.length} materials across ${consumedBatches.length} batches for order ${order.orderIdDisplay}`);
+
+        res.status(200).json({
+            status: 'success',
+            message: 'Materials committed to inventory successfully.',
+            data: {
+                order,
+                materialsCommitted: nonProfileMaterials.length,
+                batchesUsed: consumedBatches.length,
+                consumedBatches
+            },
+        });
+
+    } catch (error) {
+        console.error("Error during commit-materials: ", error);
+        if (error instanceof AppError) {
+            return next(error);
+        }
+        return next(new AppError('Failed to commit materials due to an internal error.', 500));
+    }
+});

@@ -82,6 +82,18 @@ export interface Order {
   finalGrandTotal: number;
   cuttingPlanId?: string;
   cuttingPlanStatus: 'Pending' | 'Generated' | 'Committed';
+  
+  // Material commitment tracking
+  materialsCommitted?: boolean;
+  materialsCommittedAt?: string;
+  aggregatedOrderMaterials?: Array<{
+    materialId: string;
+    materialNameSnapshot: string;
+    materialCategory: string;
+    totalQuantity: number;
+    quantityUnit: string;
+  }>;
+  
   measurementConfirmedBy?: string | { _id?: string; firstName?: string; lastName?: string; email?: string; };
   measurementConfirmedAt?: string;
   history: OrderHistoryEntry[];

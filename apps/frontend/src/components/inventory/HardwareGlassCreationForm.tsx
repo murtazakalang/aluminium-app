@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { FormInput } from '@/components/ui/FormInput';
 import { Badge } from '@/components/ui/Badge';
-import { Loader2, AlertCircle, Package, Wrench, ShieldCheck, Settings, Zap, ArrowLeft } from 'lucide-react';
+import { Loader2, AlertCircle, Package, Wrench, ShieldCheck, Settings, Zap, ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import { batchInventoryApi, SimplifiedMaterialData } from '@/lib/api/batchInventoryService';
 import { toast } from 'sonner';
 
@@ -144,6 +144,7 @@ const HardwareGlassCreationForm: React.FC<HardwareGlassCreationFormProps> = ({
     category: undefined,
     stockUnit: '',
     usageUnit: '',
+    standardLengths: [],
     supplier: '',
     brand: '',
     hsnCode: '',
@@ -167,6 +168,51 @@ const HardwareGlassCreationForm: React.FC<HardwareGlassCreationFormProps> = ({
       ...prev,
       [name]: value
     }));
+  };
+
+  // Standard lengths management for Wire Mesh
+  const addStandardLength = () => {
+    setFormData(prev => ({
+      ...prev,
+      standardLengths: [
+        ...(prev.standardLengths || []),
+        { length: 2, unit: 'ft' }
+      ]
+    }));
+  };
+
+  const removeStandardLength = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      standardLengths: prev.standardLengths?.filter((_, i) => i !== index) || []
+    }));
+  };
+
+  const updateStandardLength = (index: number, field: 'length' | 'unit', value: string | number) => {
+    setFormData(prev => ({
+      ...prev,
+      standardLengths: prev.standardLengths?.map((item, i) => 
+        i === index ? { ...item, [field]: value } : item
+      ) || []
+    }));
+  };
+
+  const importStandardWidths = () => {
+    const standardWidths = [
+      { length: 2, unit: 'ft' },
+      { length: 2.5, unit: 'ft' },
+      { length: 3, unit: 'ft' },
+      { length: 3.5, unit: 'ft' },
+      { length: 4, unit: 'ft' },
+      { length: 5, unit: 'ft' }
+    ];
+    
+    setFormData(prev => ({
+      ...prev,
+      standardLengths: standardWidths
+    }));
+    
+    toast.success('Standard widths imported successfully!');
   };
 
   const validateForm = (): string | null => {
@@ -195,7 +241,7 @@ const HardwareGlassCreationForm: React.FC<HardwareGlassCreationFormProps> = ({
         category: formData.category!,
         stockUnit: formData.stockUnit!,
         usageUnit: formData.usageUnit!,
-        standardLengths: [], // Hardware and Glass don't typically need standard lengths
+        standardLengths: formData.standardLengths || [], // Use user-defined standard lengths
         gauges: [], // Hardware and Glass don't typically need gauges
         supplier: formData.supplier?.trim() || undefined,
         brand: formData.brand?.trim() || undefined,
@@ -216,6 +262,7 @@ const HardwareGlassCreationForm: React.FC<HardwareGlassCreationFormProps> = ({
         category: undefined,
         stockUnit: '',
         usageUnit: '',
+        standardLengths: [],
         supplier: '',
         brand: '',
         hsnCode: '',
@@ -292,6 +339,7 @@ const HardwareGlassCreationForm: React.FC<HardwareGlassCreationFormProps> = ({
                   category: undefined,
                   stockUnit: '',
                   usageUnit: '',
+                  standardLengths: [],
                   supplier: '',
                   brand: '',
                   hsnCode: '',
@@ -405,6 +453,101 @@ const HardwareGlassCreationForm: React.FC<HardwareGlassCreationFormProps> = ({
               />
             </div>
 
+            {/* Wire Mesh Standard Widths */}
+            {selectedCategory === 'Wire Mesh' && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-md font-medium">
+                    Standard Widths
+                  </h4>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      onClick={importStandardWidths}
+                      variant="outline"
+                      size="sm"
+                      className="flex items-center gap-1 text-green-600 border-green-300 hover:bg-green-50"
+                    >
+                      <Package className="h-4 w-4" />
+                      Import Standard Widths
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={addStandardLength}
+                      variant="outline"
+                      size="sm"
+                      className="flex items-center gap-1"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Width
+                    </Button>
+                  </div>
+                </div>
+                
+                {formData.standardLengths && formData.standardLengths.length > 0 ? (
+                  <div className="space-y-2">
+                    {formData.standardLengths.map((length, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          value={length.length}
+                          onChange={(e) => updateStandardLength(index, 'length', parseFloat(e.target.value) || 0)}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Width"
+                          min="0"
+                          step="0.1"
+                        />
+                        <select
+                          value={length.unit}
+                          onChange={(e) => updateStandardLength(index, 'unit', e.target.value)}
+                          className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="ft">ft</option>
+                          <option value="m">m</option>
+                        </select>
+                        <Button
+                          type="button"
+                          onClick={() => removeStandardLength(index)}
+                          variant="outline"
+                          size="sm"
+                          className="text-red-600"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500 border border-gray-200 rounded-lg bg-gray-50">
+                    <ShieldCheck className="h-12 w-12 mx-auto mb-3 text-gray-400" />
+                    <p className="font-medium mb-1">No standard widths configured</p>
+                    <p className="text-sm mb-4">Add standard widths manually or import the common sizes (2ft, 2.5ft, 3ft, 3.5ft, 4ft, 5ft)</p>
+                    <div className="flex justify-center gap-2">
+                      <Button
+                        type="button"
+                        onClick={importStandardWidths}
+                        variant="outline"
+                        size="sm"
+                        className="text-green-600 border-green-300 hover:bg-green-50"
+                      >
+                        <Package className="h-4 w-4 mr-1" />
+                        Import Standard Widths
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={addStandardLength}
+                        variant="outline"
+                        size="sm"
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Add Custom Width
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Info Panel */}
             <div className={`${currentConfig.bgColor} ${currentConfig.borderColor} border rounded-lg p-4`}>
               <div className="flex items-start gap-2">
@@ -417,7 +560,7 @@ const HardwareGlassCreationForm: React.FC<HardwareGlassCreationFormProps> = ({
                     {selectedCategory === 'Glass' ? 
                       'This will create a glass material for use in windows and doors. You can specify dimensions during stock entry.' :
                       selectedCategory === 'Wire Mesh' ?
-                      'This will create a wire mesh material for security or screening purposes. Area-based measurements supported.' :
+                      'This will create a wire mesh material for security or screening purposes. You can add standard widths manually or use the "Import Standard Widths" button to quickly add common sizes (2ft, 2.5ft, 3ft, 3.5ft, 4ft, 5ft) for optimization.' :
                       selectedCategory === 'Hardware' ?
                       'This will create a hardware material for doors and windows. Perfect for handles, locks, hinges and other mechanical components.' :
                       selectedCategory === 'Accessories' ?

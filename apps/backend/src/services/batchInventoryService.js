@@ -343,11 +343,12 @@ class BatchInventoryService {
         // Find optimal width using Wire Mesh optimization service
         const WireMeshOptimizationService = require('./wireMeshOptimizationService');
         const optimization = WireMeshOptimizationService.findOptimalWidth(
-            requiredWidth, 
-            material.standardLengths.map(sl => parseFloat(sl.length.toString()))
+            material.standardLengths || [], // standardWidths array
+            requiredWidth,                  // requiredWidth number
+            'ft'                           // unit string
         );
         
-        if (!optimization.optimalWidth) {
+        if (!optimization.selectedWidth) {
             throw new Error(`No suitable width available for ${requiredWidth}ft requirement`);
         }
 
@@ -356,13 +357,13 @@ class BatchInventoryService {
             batch.isActive && 
             !batch.isCompleted && 
             batch.selectedWidth && 
-            parseFloat(batch.selectedWidth.toString()) === optimization.optimalWidth &&
+            parseFloat(batch.selectedWidth.toString()) === optimization.selectedWidth &&
             batch.totalArea && 
             parseFloat(batch.totalArea.toString()) > 0
         );
 
         if (availableBatches.length === 0) {
-            throw new Error(`No stock available for ${optimization.optimalWidth}ft width`);
+            throw new Error(`No stock available for ${optimization.selectedWidth}ft width`);
         }
 
         // Sort batches by purchase date (FIFO/LIFO)
@@ -430,9 +431,9 @@ class BatchInventoryService {
                 invoiceNumber: batch.invoiceNumber,
                 optimization: {
                     requiredWidth: requiredWidth,
-                    usedWidth: optimization.optimalWidth,
-                    wastageWidth: optimization.optimalWidth - requiredWidth,
-                    wastePercentage: optimization.wastePercentage
+                    usedWidth: optimization.selectedWidth,
+                    wastageWidth: optimization.selectedWidth - requiredWidth,
+                    wastePercentage: ((optimization.selectedWidth - requiredWidth) / optimization.selectedWidth * 100)
                 }
             });
 
@@ -440,16 +441,19 @@ class BatchInventoryService {
             transactionsToCreate.push({
                 companyId,
                 materialId: material._id,
-                batchId: batch.batchId,
-                type: 'Outward-Production',
-                subType: consumptionType,
-                quantityChange: -areaToConsume, // Negative for outward, in area units
-                unitRateAtTransaction: batchRatePerArea,
-                notes: `${consumptionType}: ${areaToConsume.toFixed(2)} sqft (${rollsToConsume.toFixed(3)} rolls) from ${optimization.optimalWidth}ft width batch. Required: ${requiredWidth}ft × ${requiredLength}ft`,
-                createdBy: userId
+                type: 'Outward-OrderCut',
+                quantityChange: mongoose.Types.Decimal128.fromString((-areaToConsume).toString()),
+                quantityUnit: 'sqft',
+                unitRateAtTransaction: mongoose.Types.Decimal128.fromString(batchRatePerArea.toString()),
+                totalValueChange: mongoose.Types.Decimal128.fromString((-consumedCost).toString()),
+                relatedDocumentType: 'BatchOperation',
+                relatedDocumentId: null,
+                notes: `${consumptionType}: ${areaToConsume.toFixed(2)} sqft (${rollsToConsume.toFixed(3)} rolls) from ${optimization.selectedWidth}ft width batch. Required: ${requiredWidth}ft × ${requiredLength}ft [Batch: ${batch.batchId}]`,
+                createdBy: userId,
+                transactionDate: new Date()
             });
 
-            console.log(`[WireMesh] 📦 Consumed ${areaToConsume.toFixed(2)} sqft (${rollsToConsume.toFixed(3)} rolls) from ${optimization.optimalWidth}ft width batch ${batch.batchId}`);
+            console.log(`[WireMesh] 📦 Consumed ${areaToConsume.toFixed(2)} sqft (${rollsToConsume.toFixed(3)} rolls) from ${optimization.selectedWidth}ft width batch ${batch.batchId}`);
 
             remainingAreaToConsume -= areaToConsume;
         }
@@ -457,21 +461,24 @@ class BatchInventoryService {
         // Save material with updated batch quantities
         await material.save();
 
-        // Create all transaction records
+        // Create all transaction records using StockTransaction model directly  
+        const StockTransaction = require('../models/StockTransaction');
         for (const txnData of transactionsToCreate) {
-            await this.createStockTransaction(txnData);
+            await StockTransaction.create(txnData);
         }
 
-        const totalWastage = (optimization.optimalWidth - requiredWidth) * requiredLength * quantity;
+        const totalWastage = (optimization.selectedWidth - requiredWidth) * requiredLength * quantity;
+        const wastePercentage = (optimization.selectedWidth - requiredWidth) / optimization.selectedWidth * 100;
         
-        console.log(`[WireMesh] ✅ Consumed total ${totalAreaNeeded} sqft with ${totalWastage.toFixed(2)} sqft wastage (${optimization.wastePercentage.toFixed(1)}%)`);
+        console.log(`[WireMesh] ✅ Consumed total ${totalAreaNeeded} sqft with ${totalWastage.toFixed(2)} sqft wastage (${wastePercentage.toFixed(1)}%)`);
 
         return {
             success: true,
             totalAreaConsumed: totalAreaNeeded,
             totalWastage: totalWastage,
-            wastePercentage: optimization.wastePercentage,
-            optimalWidth: optimization.optimalWidth,
+            wastePercentage: wastePercentage,
+            optimalWidth: optimization.selectedWidth,
+            averageEfficiency: 100 - wastePercentage,
             consumedBatches,
             optimization,
             material

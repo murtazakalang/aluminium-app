@@ -16,6 +16,7 @@ import SimplifiedMaterialCreationForm from './SimplifiedMaterialCreationForm';
 import HardwareGlassCreationForm from './HardwareGlassCreationForm';
 import SimplifiedBatchStockInwardForm from './SimplifiedBatchStockInwardForm';
 import ConsumptionHistoryViewer from './ConsumptionHistoryViewer';
+import MaterialEditForm from './MaterialEditForm';
 import { 
   batchInventoryApi, 
   BatchMaterial, 
@@ -24,7 +25,7 @@ import {
 } from '@/lib/api/batchInventoryService';
 import { toast } from 'sonner';
 
-type ViewMode = 'overview' | 'consumption' | 'history' | 'analytics' | 'simplifiedCreate' | 'hardwareGlassCreate' | 'simplifiedStockInward' | 'consumptionHistory';
+type ViewMode = 'overview' | 'consumption' | 'history' | 'analytics' | 'simplifiedCreate' | 'hardwareGlassCreate' | 'simplifiedStockInward' | 'consumptionHistory' | 'editMaterial';
 
 const BatchInventoryDashboard: React.FC = () => {
   // ============================================================================
@@ -383,6 +384,18 @@ const BatchInventoryDashboard: React.FC = () => {
                           View
                         </Button>
                         <Button
+                          onClick={() => {
+                            setSelectedMaterial(material);
+                            setViewMode('editMaterial');
+                          }}
+                          variant="outline"
+                          size="sm"
+                          className="flex items-center gap-1"
+                        >
+                          <Wrench className="h-3 w-3" />
+                          Edit
+                        </Button>
+                        <Button
                           onClick={() => handleDeleteMaterial(material)}
                           variant="outline"
                           size="sm"
@@ -612,6 +625,17 @@ const BatchInventoryDashboard: React.FC = () => {
           <ConsumptionHistoryViewer
             materialId={selectedMaterial.id}
             materialName={selectedMaterial.name}
+          />
+        )}
+
+        {viewMode === 'editMaterial' && selectedMaterial && (
+          <MaterialEditForm
+            material={selectedMaterial}
+            onSave={() => {
+              handleRefreshData();
+              resetView();
+            }}
+            onCancel={resetView}
           />
         )}
       </div>

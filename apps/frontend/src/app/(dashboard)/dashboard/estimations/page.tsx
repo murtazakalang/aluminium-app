@@ -21,6 +21,7 @@ export default function EstimationsPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [recalculatingIds, setRecalculatingIds] = useState<Set<string>>(new Set());
 
   const fetchEstimations = async () => {
     try {
@@ -55,6 +56,25 @@ export default function EstimationsPage() {
   useEffect(() => {
     fetchEstimations();
   }, [page, statusFilter]);
+
+  const handleRecalculate = async (id: string) => {
+    setRecalculatingIds(prev => new Set([...prev, id]));
+    try {
+      await estimationApi.calculateMaterials(id);
+      // Refresh the estimations list to show updated status
+      fetchEstimations();
+      // Show success message (could be replaced with toast notification)
+      alert('Materials recalculated successfully!');
+    } catch (error) {
+      setError('Failed to recalculate materials');
+    } finally {
+      setRecalculatingIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(id);
+        return newSet;
+      });
+    }
+  };
 
   const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this estimation?')) {
@@ -124,6 +144,29 @@ export default function EstimationsPage() {
           {error}
         </div>
       )}
+
+      {/* Material Recalculation Info */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <div className="flex items-start">
+          <div className="flex-shrink-0">
+            <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <div className="ml-3">
+            <h3 className="text-sm font-medium text-blue-800">
+              Material Recalculation
+            </h3>
+            <div className="mt-2 text-sm text-blue-700">
+              <p>
+                Use the "Recalc" button to refresh material calculations when you've updated inventory, 
+                added new materials, modified product formulas, or changed standard lengths. 
+                This ensures your estimations reflect the latest data and rates.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {loading ? (
         <div className="text-center py-10">
@@ -200,6 +243,14 @@ export default function EstimationsPage() {
                         className="text-blue-600 hover:text-blue-900"
                       >
                         Edit
+                      </button>
+                      <button
+                        onClick={() => handleRecalculate(estimation._id)}
+                        disabled={recalculatingIds.has(estimation._id)}
+                        className={`text-green-600 hover:text-green-900 ${recalculatingIds.has(estimation._id) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        title="Recalculate materials with latest inventory and formulas"
+                      >
+                        {recalculatingIds.has(estimation._id) ? 'Recalc...' : 'Recalc'}
                       </button>
                       <button
                         onClick={() => handleDelete(estimation._id)}

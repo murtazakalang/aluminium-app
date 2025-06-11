@@ -332,10 +332,13 @@ const ProductForm: React.FC<ProductFormProps> = ({ initialData, isEdit = false }
     setLoading(true);
     
     try {
+      // Exclude technicalDrawing from product update as it has its own endpoint
+      const { technicalDrawing, ...productData } = formData;
+      
       if (isEdit && initialData?._id) {
-        await productApi.updateProduct(initialData._id, formData);
+        await productApi.updateProduct(initialData._id, productData);
       } else {
-        await productApi.createProduct(formData);
+        await productApi.createProduct(productData);
       }
       
       router.push('/dashboard/products');

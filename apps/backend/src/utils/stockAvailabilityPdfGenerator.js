@@ -41,15 +41,28 @@ const generateStockAvailabilityPDF = async (orderData, stockAvailability, glassR
             });
         };
 
-        const formatStockDetails = (details) => {
+        const formatStockDetails = (details, materialCategory) => {
             if (!details || details.length === 0) return '—';
             return details.map(detail => {
                 // Handle both numeric and string length values
                 const lengthDisplay = typeof detail.length === 'number' 
                     ? detail.length.toFixed(2) 
                     : detail.length; // For wire mesh dimensions like "2ft x 3.75ft"
-                return `(${detail.count} x ${lengthDisplay}${detail.unit})`;
-            }).join('');
+                
+                // For profiles, always show count (even for 1 piece) to match estimation pattern
+                if (materialCategory === 'Profile') {
+                    const countText = detail.count === 1 ? 'piece' : 'pieces';
+                    return `${lengthDisplay} ${detail.unit} (${detail.count} ${countText})`;
+                }
+                // For hardware and wire mesh, only show count when > 1
+                else if (detail.count === 1) {
+                    // When count is 1, show just "length unit" (e.g., "10 pcs" or "2.5 x 2.33 ft")
+                    return `${lengthDisplay} ${detail.unit}`;
+                } else {
+                    // When count > 1, show "length unit (count pieces)"
+                    return `${lengthDisplay} ${detail.unit} (${detail.count} pieces)`;
+                }
+            }).join(', ');
         };
 
         const getStatusColor = (status) => {
@@ -456,9 +469,9 @@ const generateStockAvailabilityPDF = async (orderData, stockAvailability, glassR
                                         ${safeField(stock.status)}
                                     </span>
                                 </td>
-                                <td>${formatStockDetails(stock.requiredCutsDetail)}</td>
-                                <td>${formatStockDetails(stock.availableStockDetail)}</td>
-                                <td>${formatStockDetails(stock.shortfallDetail)}</td>
+                                <td>${formatStockDetails(stock.requiredCutsDetail, stock.category)}</td>
+                                <td>${formatStockDetails(stock.availableStockDetail, stock.category)}</td>
+                                <td>${formatStockDetails(stock.shortfallDetail, stock.category)}</td>
                             </tr>
                             `;
                         }).join('')}

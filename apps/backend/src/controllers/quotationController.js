@@ -546,7 +546,7 @@ exports.sendQuotation = async (req, res) => {
         const { quotationId } = req.params;
 
         const quotation = await Quotation.findOne({ _id: quotationId, companyId })
-            .populate('clientId', 'clientName email contactNumber'); // Populate client email
+            .populate('clientId', 'clientName email contactNumber billingAddress siteAddress gstin'); // Populate client email and address fields
 
         if (!quotation) {
             return res.status(404).json({
@@ -578,8 +578,23 @@ exports.sendQuotation = async (req, res) => {
             return res.status(500).json({ status: 'fail', message: 'Company details not found.' });
         }
 
+        // Ensure clientSnapshot exists for PDF generation
+        let quotationData = quotation.toObject ? quotation.toObject() : quotation;
+        
+        if (!quotationData.clientSnapshot && quotationData.clientId) {
+            console.log('[sendQuotation] Creating clientSnapshot from clientId for PDF generation');
+            quotationData.clientSnapshot = {
+                clientName: quotationData.clientId.clientName || 'Valued Client',
+                email: quotationData.clientId.email || '',
+                contactNumber: quotationData.clientId.contactNumber || '',
+                gstin: quotationData.clientId.gstin || '',
+                billingAddress: quotationData.clientId.billingAddress || {},
+                siteAddress: quotationData.clientId.siteAddress || {}
+            };
+        }
+
         // Generate PDF
-        const pdfBuffer = await generatePdfUtil(quotation, company);
+        const pdfBuffer = await generatePdfUtil(quotationData, company);
         if (!pdfBuffer || pdfBuffer.length === 0) {
             console.error(`[sendQuotation] PDF generation failed for ${quotation.quotationIdDisplay}.`);
             // Do not change status if PDF fails
@@ -816,6 +831,34 @@ exports.generateQuotationPDF = async (req, res) => {
             console.log(`[generateQuotationPDF] Using fallback quotationIdDisplay: ${fallbackId}`);
         }
 
+        // Ensure clientSnapshot exists for PDF generation
+        if (!quotation.clientSnapshot || !quotation.clientSnapshot.clientName) {
+            console.log(`[generateQuotationPDF] Creating missing clientSnapshot for quotation ${quotation.quotationIdDisplay}`);
+            
+            // Fetch client details if clientSnapshot is missing
+            let clientData = null;
+            if (quotation.clientId) {
+                try {
+                    clientData = await mongoose.model('Client').findOne({ 
+                        _id: quotation.clientId, 
+                        companyId: req.user.companyId 
+                    }).lean();
+                } catch (err) {
+                    console.warn(`[generateQuotationPDF] Failed to fetch client data:`, err.message);
+                }
+            }
+            
+            quotation.clientSnapshot = {
+                clientName: clientData?.clientName || 'Valued Client',
+                contactPerson: clientData?.contactPerson || clientData?.clientName || '',
+                contactNumber: clientData?.contactNumber || '',
+                email: clientData?.email || '',
+                billingAddress: clientData?.billingAddress || '',
+                siteAddress: clientData?.siteAddress || clientData?.billingAddress || '',
+                gstin: clientData?.gstin || ''
+            };
+        }
+
         // Fetch company details for branding
         const company = await Company.findById(req.user.companyId);
         if (!company) {
@@ -826,8 +869,18 @@ exports.generateQuotationPDF = async (req, res) => {
             });
         }
         
-        console.log(`[generateQuotationPDF] Generating PDF for quotation ${quotation.quotationIdDisplay}`);
-        const pdfBuffer = await generatePdfUtil(quotation, company);
+        console.log(`[generateQuotationPDF] Generating PDF for quotation ${quotation.quotationIdDisplay} with clientSnapshot:`, !!quotation.clientSnapshot?.clientName);
+        
+        // Convert to plain object if it's a Mongoose document (when using .lean() it's already plain)
+        const quotationData = quotation.toObject ? quotation.toObject() : quotation;
+        
+        // Ensure clientSnapshot is properly set on the plain object
+        if (!quotationData.clientSnapshot || !quotationData.clientSnapshot.clientName) {
+            quotationData.clientSnapshot = quotation.clientSnapshot;
+        }
+        
+        console.log(`[generateQuotationPDF] Plain object clientSnapshot check:`, !!quotationData.clientSnapshot?.clientName);
+        const pdfBuffer = await generatePdfUtil(quotationData, company);
         
         if (!pdfBuffer || pdfBuffer.length === 0) {
             console.error(`[generateQuotationPDF] Empty PDF buffer for quotation: ${quotation.quotationIdDisplay}`);
@@ -903,6 +956,20 @@ exports.sendQuotationByEmail = async (req, res) => {
         if (!quotation.clientId || !quotation.clientId.email) {
             return res.status(400).json({ status: 'fail', message: 'Client email address not found for this quotation.' });
         }
+
+        // Ensure clientSnapshot exists for PDF generation
+        if (!quotation.clientSnapshot || !quotation.clientSnapshot.clientName) {
+            console.log(`[sendQuotationByEmail] Creating missing clientSnapshot for quotation ${quotation.quotationIdDisplay}`);
+            quotation.clientSnapshot = {
+                clientName: quotation.clientId.clientName || 'Valued Client',
+                contactPerson: quotation.clientId.contactPerson || quotation.clientId.clientName || '',
+                contactNumber: quotation.clientId.contactNumber || '',
+                email: quotation.clientId.email || '',
+                billingAddress: quotation.clientId.billingAddress || '',
+                siteAddress: quotation.clientId.siteAddress || quotation.clientId.billingAddress || '',
+                gstin: quotation.clientId.gstin || ''
+            };
+        }
         
         const company = await Company.findById(companyId).select('name address phone email logoUrl');
         if (!company) {
@@ -910,7 +977,18 @@ exports.sendQuotationByEmail = async (req, res) => {
             return res.status(500).json({ status: 'fail', message: 'Company details not found.' });
         }
 
-        const pdfBuffer = await generatePdfUtil(quotation, company);
+        console.log(`[sendQuotationByEmail] Generating PDF for quotation ${quotation.quotationIdDisplay} with clientSnapshot:`, !!quotation.clientSnapshot?.clientName);
+        
+        // Convert Mongoose document to plain object to ensure clientSnapshot is properly passed
+        const quotationData = quotation.toObject ? quotation.toObject() : quotation;
+        
+        // Ensure clientSnapshot is properly set on the plain object
+        if (!quotationData.clientSnapshot || !quotationData.clientSnapshot.clientName) {
+            quotationData.clientSnapshot = quotation.clientSnapshot;
+        }
+        
+        console.log(`[sendQuotationByEmail] Plain object clientSnapshot check:`, !!quotationData.clientSnapshot?.clientName);
+        const pdfBuffer = await generatePdfUtil(quotationData, company);
         
         // Check if PDF is valid using byte checking
         if (!isValidPDFBuffer(pdfBuffer)) {

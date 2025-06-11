@@ -311,6 +311,17 @@ export default function CalculateEstimationPage({ params }: { params: { estimati
           >
             Edit Details
           </button>
+          <button
+            type="button"
+            onClick={handleCalculate}
+            disabled={calculating}
+            className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 ${calculating ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <svg className={`-ml-1 mr-2 h-4 w-4 ${calculating ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {calculating ? 'Recalculating...' : 'Recalculate Materials'}
+          </button>
           {estimation.status === 'Calculated' && (
             <button
               type="button"
@@ -369,6 +380,7 @@ export default function CalculateEstimationPage({ params }: { params: { estimati
           </div>
         ) : (
           <>
+
             <div className="bg-white rounded-lg shadow">
               <div className="px-4 py-5 sm:px-6">
                 <h3 className="text-lg leading-6 font-medium text-gray-900">Required Materials</h3>
