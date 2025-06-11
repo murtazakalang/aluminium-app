@@ -256,6 +256,8 @@ class EstimationService {
             throw new Error('Estimation not found');
         }
 
+        console.log(`[EstimationService] Starting material calculation for estimation ${estimationId} with ${estimation.items.length} items`);
+
         const calculatedMaterialsMap = {};
         const profileMaterialCuts = {};
 
@@ -1082,6 +1084,14 @@ This enables automatic width optimization and reduces material waste.`);
         
         estimation.status = 'Calculated';
         await estimation.save();
+
+        console.log(`[EstimationService] Material calculation completed for estimation ${estimationId}. Found ${Object.keys(calculatedMaterialsMap).length} materials`);
+        
+        // Validate estimation object before returning
+        if (!estimation || !estimation._id) {
+            console.error(`[EstimationService] Invalid estimation object after calculation:`, estimation);
+            throw new Error('Invalid estimation object after calculation');
+        }
 
         return estimation;
     }

@@ -50,8 +50,33 @@ export async function api<T>(endpoint: string, options: ApiOptions = {}): Promis
     return null as T; // Cast to T as the function expects a Promise<T>
   }
 
-  const jsonResponse = await response.json();
-  return jsonResponse;
+  // Check if response has content before trying to parse JSON
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    console.error(`[API] Non-JSON response received for ${endpoint}:`, {
+      status: response.status,
+      statusText: response.statusText,
+      contentType: contentType
+    });
+    throw new Error(`Expected JSON response but received ${contentType || 'unknown content type'}`);
+  }
+
+  const responseText = await response.text();
+  if (!responseText || responseText.trim() === '' || responseText === 'undefined') {
+    console.error(`[API] Empty or undefined response received for ${endpoint}:`, responseText);
+    throw new Error('Server returned empty or undefined response');
+  }
+
+  try {
+    const jsonResponse = JSON.parse(responseText);
+    return jsonResponse;
+  } catch (parseError) {
+    console.error(`[API] JSON parse error for ${endpoint}:`, {
+      responseText: responseText,
+      parseError: parseError
+    });
+    throw new Error(`Failed to parse JSON response: ${parseError instanceof Error ? parseError.message : 'Unknown parse error'}`);
+  }
 }
 
 // Company API

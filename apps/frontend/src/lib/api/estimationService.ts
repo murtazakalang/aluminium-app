@@ -152,10 +152,23 @@ export const estimationApi = {
 
   // Calculate materials for an estimation
   calculateMaterials: async (id: string): Promise<Estimation> => {
-    const response = await api<{ message: string; estimation: Estimation }>(`/api/estimations/${id}/calculate`, { 
-      method: 'POST' 
-    });
-    return response.estimation;
+    try {
+      console.log(`[estimationApi] Calling calculateMaterials for estimation ${id}`);
+      const response = await api<{ message: string; estimation: Estimation }>(`/api/estimations/${id}/calculate`, { 
+        method: 'POST' 
+      });
+      
+      if (!response || !response.estimation) {
+        console.error(`[estimationApi] Invalid response received:`, response);
+        throw new Error('Invalid response: missing estimation data');
+      }
+      
+      console.log(`[estimationApi] Successfully calculated materials for estimation ${id}`);
+      return response.estimation;
+    } catch (error) {
+      console.error(`[estimationApi] Error calculating materials for estimation ${id}:`, error);
+      throw error;
+    }
   },
 
   // Generate PDF for an estimation

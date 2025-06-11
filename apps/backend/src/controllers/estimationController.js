@@ -279,10 +279,21 @@ module.exports = {
      */
     calculateEstimationMaterials: async (req, res) => {
         try {
+            console.log(`[EstimationController] Starting material calculation for estimation ${req.params.id}`);
+            
             const estimation = await EstimationService.calculateEstimationMaterials(
                 req.params.id, 
                 req.user.companyId
             );
+
+            if (!estimation) {
+                console.error(`[EstimationController] EstimationService returned null/undefined estimation`);
+                return res.status(500).json({ 
+                    error: 'Material calculation failed: No estimation returned' 
+                });
+            }
+
+            console.log(`[EstimationController] Material calculation successful for estimation ${req.params.id}`);
 
             res.status(200).json({
                 message: 'Materials calculated successfully',
