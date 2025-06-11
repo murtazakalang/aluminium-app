@@ -189,7 +189,7 @@ exports.login = async (req, res, next) => {
 
     } catch (error) {
         console.error("Login Error:", error);
-         // Remove the specific CastError check for companyId as it's no longer expected
+        // Remove the specific CastError check for companyId as it's no longer expected
         // if (error.name === 'CastError' && error.path === 'companyId') {
         //      return res.status(400).json({ status: 'fail', message: 'Invalid company identifier format.' });
         // }
